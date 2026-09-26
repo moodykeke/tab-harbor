@@ -709,6 +709,69 @@ test('摘录改动使指纹缓存失效(WP-1.3 的指纹覆盖摘录)', () => {
   assert.notStrictEqual(BGTStore.buildUrlIdentity(data), a, '摘录文本改动必须未命中');
 });
 
+/* ---- 决策 4:URL 归一化缓存为真 LRU(命中刷新近度,淘汰最久未用) ---- */
+
+test('决策 4: urlCache 是真 LRU —— 命中刷新近度,热条目在溢出时存活', () => {
+  const N = BGTStore.URL_CACHE_MAX;
+  const url = (i) => 'https://site' + i + '.example.com/p' + i;
+  for (let i = 0; i < N; i += 1) BGTStore.normalizeUrl(url(i)); // 灌满
+  assert.ok(BGTStore.urlCacheHas(url(0)), '灌满后首条应在缓存中');
+
+  BGTStore.normalizeUrl(url(0)); // 命中刷新近度:url(0) 成为"最近使用"
+  BGTStore.normalizeUrl('https://one-more.example.com/'); // 溢出 1 条 → 只能淘汰"最久未用"(url(1))
+
+  assert.ok(BGTStore.urlCacheHas(url(0)), '刚被访问过的热条目必须存活(这是 LRU 与 FIFO 的分界)');
+  assert.ok(!BGTStore.urlCacheHas(url(1)), '最久未用的条目应被淘汰');
+  assert.ok(BGTStore.urlCacheHas(url(N - 1)), '其余条目不受影响');
+});
+
+/* ---- Wave 3.2:稳定性分类器(判别核心,先于 WP-3.3) ---- */
+
+/** 通过真实身份索引构造"同一 URL、逐次观测标题不同"的条目(occurrences 按 at 升序) */
+function entryWithTitles(titles) {
+  const data = BGTStore.emptyData();
+  data.records = titles.map((t, i) => BGTStore.makeRecord({
+    id: 'r' + i, title: '记' + i, createdAt: 100 + i,
+    tabs: [{ url: 'https://a.com/x', title: t, savedAt: 100 + i }],
+  }));
+  return BGTStore.lookupIndex(BGTStore.buildUrlIdentity(data), 'https://a.com/x');
+}
+
+test('3.2 分类器:仅观测一次 → single,措辞守 §7.1 纪律', () => {
+  const c = BGTStore.classifyStability(entryWithTitles(['唯一标题']));
+  assert.strictEqual(c.verdict, 'single');
+  assert.ok(c.reasons.join().includes('仅观测一次'), '不得说"内容稳定"');
+});
+
+test('3.2 分类器:标题一致与计数/日期噪声 → stable(首页类地址不产生假版本)', () => {
+  assert.strictEqual(BGTStore.classifyStability(entryWithTitles(['收件箱', '收件箱'])).verdict, 'stable');
+  const noisy = BGTStore.classifyStability(entryWithTitles(['收件箱 (3)', '收件箱 (12)', '收件箱 (128)']));
+  assert.strictEqual(noisy.verdict, 'stable', '(N) 计数差异是噪声,不是版本');
+  assert.ok(noisy.reasons.join().includes('噪声'), '判据要说明是噪声折叠');
+  const dated = BGTStore.classifyStability(entryWithTitles(['日报 2026-09-25', '日报 2026-09-26']));
+  assert.strictEqual(dated.verdict, 'stable', '日期后缀差异是噪声');
+});
+
+test('3.2 分类器:版本记号单调递进 → versioned;记号乱序不算', () => {
+  const v = BGTStore.classifyStability(entryWithTitles(['设计稿 v1', '设计稿 v2', '设计稿 v3']));
+  assert.strictEqual(v.verdict, 'versioned');
+  assert.ok(v.reasons.join().includes('单调递进'));
+  const chaos = BGTStore.classifyStability(entryWithTitles(['设计稿 v3', '设计稿 v2']));
+  assert.notStrictEqual(chaos.verdict, 'versioned', '记号不单调不得判为版本谱系');
+});
+
+test('3.2 分类器:标题乱跳 → dynamic(变化率按噪声折叠后口径);收藏引用单独披露', () => {
+  const d = BGTStore.classifyStability(entryWithTitles(['HN 头条甲', 'HN 头条乙完全不同', '又一个标题']));
+  assert.strictEqual(d.verdict, 'dynamic');
+  assert.strictEqual(d.titleChurn, 1, '折叠后 3 种标题 / 3 次观测');
+  const data = BGTStore.emptyData();
+  data.records = [BGTStore.makeRecord({ id: 'r1', title: '记', createdAt: 1, tabs: [{ url: 'https://a.com/x', title: 'T', savedAt: 1 }] })];
+  data.groups = [BGTStore.normalizeGroup({ id: 'g1', title: '收藏', tabs: [{ url: 'https://a.com/x', title: 'T', savedAt: 2 }] })];
+  const c = BGTStore.classifyStability(BGTStore.lookupIndex(BGTStore.buildUrlIdentity(data), 'https://a.com/x'));
+  assert.strictEqual(c.savedByUser, true, '收藏引用应被披露为"被主动保存过"');
+  assert.strictEqual(c.verdict, 'stable');
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

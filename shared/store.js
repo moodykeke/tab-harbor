@@ -549,7 +549,12 @@
 
   function normalizeUrl(u) {
     const cached = urlCache.get(u);
-    if (cached) return cached;
+    if (cached) {
+      // 真 LRU(决策 4):命中即刷新近度(delete+重插移到尾),淘汰的永远是"最久未用"
+      // 而不是"最早插入" —— 热条目不再被批量保存的新 URL 挤掉(此前实测 27ms → 674ms)
+      if (urlCache.size > 1) { urlCache.delete(u); urlCache.set(u, cached); }
+      return cached;
+    }
     let url;
     try { url = new URL(u); } catch (e) {
       const r = { key: String(u || ''), host: '', hadFragment: false, stripped: 0 };
@@ -745,6 +750,76 @@
   /** 用原始 URL 在身份索引中查身份条目({ seenCount, referenceCount, occurrences[] }) */
   function lookupIndex(index, rawUrl) {
     return (index && index.get(normalizeUrl(rawUrl).key)) || { seenCount: 0, referenceCount: 0, occurrences: [] };
+  }
+
+  /* ---------------- Wave 3.2:稳定性分类器(判别的核心工程,先于 WP-3.3) ----------------
+   * 纪律(手册 §7.1):内容在默认权限下不可观测,标题只是代理 —— 判定只能说"看到的事实"。
+   * 输入为身份索引条目,输出结构化判定;用户可见措辞由 WP-3.3 决定,不在这里硬编码。
+   * 朴素地在标题上做"逐字不同=新版本"会在首页类地址上爆炸(news.ycombinator.com 每次标题都不同),
+   * 因此判据按手册三条:标题变化率 / 是否被主动保存过 / 差异形态(计数·时间戳=噪声;版本记号=真变化)。 */
+
+  /** 折叠计数/时间噪声:(3)、[12]、时间、日期、"· N 条" 等 —— 折叠后相同视为同一标题 */
+  function noiseFoldTitle(t) {
+    return String(t || '')
+      .replace(/[([]\s*\d+\s*[)\]]/g, '#')
+      .replace(/\d{4}-\d{2}-\d{2}/g, '#')
+      .replace(/\d{1,2}:\d{2}/g, '#')
+      .replace(/\s*[·|]\s*\d+\s*(条|个|篇|项|则|items?|msgs?|messages?|results?|notifications?)\b/gi, ' #')
+      .trim();
+  }
+
+  /** 标题尾部的版本记号(v2 / ver 3 / rev 7 / 第 2 版)—— 只认尾部,降低误报 */
+  function versionNumberOf(title) {
+    const s = String(title || '');
+    const m = s.match(/(?:^|[\s([])(?:v|ver|rev|r)\.?\s*(\d+)$/i) || s.match(/(\d+)\s*版$/);
+    return m ? Number(m[1]) : null;
+  }
+
+  function classifyStability(entry) {
+    const occ = (entry && Array.isArray(entry.occurrences)) ? entry.occurrences : [];
+    const obsCount = occ.length;
+    const savedByUser = occ.some((o) => o.source === 'group');
+    if (!obsCount) {
+      return { verdict: 'unknown', obsCount: 0, distinctTitles: 0, titleChurn: 0, savedByUser: false, reasons: ['无观测'] };
+    }
+    const titles = occ.map((o) => String(o.tabTitle || ''));
+    if (obsCount === 1) {
+      return { verdict: 'single', obsCount, distinctTitles: 1, titleChurn: 0, savedByUser, reasons: ['仅观测一次,无从比较'] };
+    }
+    const distinct = Array.from(new Set(titles));
+    const base = { obsCount, distinctTitles: distinct.length, savedByUser };
+    if (savedByUser) base.reasons = ['存在收藏引用(被主动保存过)'];
+
+    if (distinct.length === 1) {
+      return Object.assign(base, { verdict: 'stable', titleChurn: 0,
+        reasons: (base.reasons || []).concat(['历次观测标题一致']) });
+    }
+    const folded = Array.from(new Set(titles.map(noiseFoldTitle)));
+    if (folded.length === 1) {
+      return Object.assign(base, { verdict: 'stable', titleChurn: 0,
+        reasons: (base.reasons || []).concat(['标题差异均为计数/时间噪声(折叠后一致)']) });
+    }
+    // 版本形态 A:尾部版本记号随时间单调递增(occurrences 已按 at 升序)
+    const withVer = occ.map((o) => versionNumberOf(o.tabTitle)).filter((v) => v != null);
+    const verDistinct = Array.from(new Set(withVer));
+    if (verDistinct.length >= 2) {
+      let mono = true;
+      for (let i = 1; i < withVer.length; i += 1) if (withVer[i] <= withVer[i - 1]) { mono = false; break; }
+      if (mono) {
+        return Object.assign(base, { verdict: 'versioned', titleChurn: 1,
+          reasons: (base.reasons || []).concat(['尾部版本记号随时间单调递进(v' + Math.min(...verDistinct) + '→v' + Math.max(...verDistinct) + ')']) });
+      }
+    }
+    // 版本形态 B:草稿态 → 定稿态
+    const DRAFT_RE = /draft|wip|草稿|初稿/i;
+    const FINAL_RE = /final|定稿|正式版|发布$/i;
+    if (DRAFT_RE.test(titles[0]) && FINAL_RE.test(titles[titles.length - 1])) {
+      return Object.assign(base, { verdict: 'versioned', titleChurn: 1,
+        reasons: (base.reasons || []).concat(['观测序列呈草稿→定稿形态']) });
+    }
+    return Object.assign(base, { verdict: 'dynamic',
+      titleChurn: Number((folded.length / obsCount).toFixed(2)),
+      reasons: (base.reasons || []).concat(['不同标题数(噪声折叠后 ' + folded.length + ')/ 观测数 ' + obsCount + ',标题乱跳,按动态页面对待']) });
   }
 
   /* ---------------- 相似分组洞察 ---------------- */
@@ -1141,7 +1216,10 @@
     ruleTarget: ruleTarget,
     buildUrlIdentity: buildUrlIdentity,
     lookupIndex: lookupIndex,
+    classifyStability: classifyStability,
     normalizeUrl: normalizeUrl,
+    URL_CACHE_MAX: URL_CACHE_MAX,
+    urlCacheHas: function (u) { return urlCache.has(u); }, // 仅供门禁观测 LRU 淘汰行为(决策 4 断言)
     diffTabs: diffTabs,
     makeRecord: makeRecord,
     filterOnlyNew: filterOnlyNew,
