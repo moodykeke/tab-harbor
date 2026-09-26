@@ -639,6 +639,41 @@ test('分键往返:persist → load 内容一致(合并视图形状未变)', asy
   assert.deepStrictEqual(back, BGTStore.normalizeData(data));
 });
 
+/* ---- WP-1.3:派生索引指纹记忆化 ---- */
+
+test('WP-1.3: 内容未变 → 命中同一份只读索引(不重建)', () => {
+  const data = BGTStore.emptyData();
+  data.groups = [BGTStore.normalizeGroup({ id: 'g1', title: '组', tabs: [{ url: 'https://a.com/x', title: 'A', savedAt: 100 }] })];
+  data.records = [BGTStore.makeRecord({ id: 'r1', title: '记', createdAt: 200, tabs: [{ url: 'https://a.com/x', title: 'A', savedAt: 100 }] })];
+  const a = BGTStore.buildUrlIdentity(data);
+  const b = BGTStore.buildUrlIdentity(data);
+  assert.strictEqual(b, a, '内容未变应命中缓存并返回同一实例');
+  const e = BGTStore.lookupIndex(b, 'https://a.com/x');
+  assert.strictEqual(e.seenCount, 2, '分组引用 + 记录事件');
+});
+
+test('WP-1.3: 任何输入改动都使缓存失效 —— 无过期窗口(防抖窗口内的编辑也逃不掉)', () => {
+  const data = BGTStore.emptyData();
+  data.groups = [BGTStore.normalizeGroup({ id: 'g1', title: '组', tabs: [{ url: 'https://a.com/x', title: '旧标题', savedAt: 100 }] })];
+  data.workspaces = [BGTStore.normalizeWorkspace({ id: 'w1', title: '区' })];
+  const a = BGTStore.buildUrlIdentity(data);
+  const key = 'https://a.com/x';
+
+  data.groups[0].tabs[0].title = '新标题'; // 未落盘的纯内存改动(persist 之前)
+  const b = BGTStore.buildUrlIdentity(data);
+  assert.notStrictEqual(b, a, '标签标题改动必须未命中');
+  assert.strictEqual(BGTStore.lookupIndex(b, key).title, '新标题', '且新标题要在索引里生效');
+
+  data.groups[0].tabs[0].savedAt = 999;
+  assert.notStrictEqual(BGTStore.buildUrlIdentity(data), b, 'savedAt 改动必须未命中');
+
+  data.workspaces[0].lastEventId = 'ev9';
+  assert.notStrictEqual(BGTStore.buildUrlIdentity(data), b, 'workspace.lastEventId 改动必须未命中');
+
+  data.groups[0].title = '改组名';
+  assert.notStrictEqual(BGTStore.buildUrlIdentity(data), b, '分组标题(occurrences.refTitle)改动必须未命中');
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

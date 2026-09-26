@@ -604,7 +604,50 @@
    * firstSeenAt / lastSeenAt / seenCount / occurrences(来源引用)。
    * 不落盘——三个文档本身是不可变事实,派生视图永远一致。
    */
+  /* ---------------- 派生索引指纹记忆化(WP-1.3) ----------------
+   * buildUrlIdentity 的结果按"内容指纹"缓存在内存(派生索引永不落盘 —— 落盘会重新引入漂移)。
+   * 指纹每次调用都重算:双路 FNV 滚动哈希、零分配、覆盖索引输入的**超集** ——
+   * 任何内存中的改动(哪怕尚未落盘,如防抖窗口内的编辑)都会改变指纹,不存在过期窗口;
+   * 假未中只损失性能,假命中需两路 64 位同时碰撞(~2^-64),方向上是安全的。 */
+
+  let identityMemo = null; // { fp, index } 单槽:只缓存最近一次数据视图(渲染路径反复传同一份 state.data)
+  let fp0 = 0, fp1 = 0;
+
+  function fpField(v) {
+    const s = v == null ? '' : String(v);
+    for (let i = 0; i < s.length; i += 1) {
+      const c = s.charCodeAt(i);
+      fp0 = Math.imul(fp0 ^ c, 0x01000193) >>> 0;
+      fp1 = Math.imul(fp1 + c, 0x85ebca6b) >>> 0;
+    }
+    // 字段边界哨兵:两路同时混入,防止 'ab'+'c' 与 'a'+'bc' 同指纹
+    fp0 = Math.imul(fp0 ^ 0x1f, 0x01000193) >>> 0;
+    fp1 = Math.imul(fp1 ^ 0x9e, 0x85ebca6b) >>> 0;
+  }
+
+  function identityFingerprint(data) {
+    fp0 = 0x811c9dc5; fp1 = 0x9e3779b9;
+    const fpTabs = function (list) {
+      for (const t of list || []) { fpField(t.url); fpField(t.title); fpField(t.savedAt); }
+    };
+    // 与 buildUrlIdentityRaw 的消费顺序一致:wsEvent 预扫描 → groups → workspaces → records
+    for (const w of data.workspaces || []) { if (w.lastEventId) { fpField('E'); fpField(w.id); fpField(w.lastEventId); } }
+    for (const g of data.groups || []) { fpField('G'); fpField(g.id); fpField(g.title); fpField(g.createdAt); fpTabs(g.tabs); }
+    for (const w of data.workspaces || []) { fpField('W'); fpField(w.id); fpField(w.title); fpField(w.createdAt); fpField(w.lastEventId); fpTabs(w.tabs); }
+    for (const r of data.records || []) { fpField('R'); fpField(r.id); fpField(r.title); fpField(r.createdAt); fpTabs(r.tabs); }
+    return fp0 + ',' + fp1;
+  }
+
+  /** 身份索引(带指纹记忆化)。返回值是共享缓存实例,调用方**只读**;需变更语义时改数据再调即可。 */
   function buildUrlIdentity(data) {
+    const fp = identityFingerprint(data);
+    if (identityMemo && identityMemo.fp === fp) return identityMemo.index;
+    const index = buildUrlIdentityRaw(data);
+    identityMemo = { fp: fp, index: index };
+    return index;
+  }
+
+  function buildUrlIdentityRaw(data) {
     const wsEvent = new Map();
     for (const w of data.workspaces || []) {
       if (w.lastEventId) wsEvent.set(w.id, w.lastEventId);

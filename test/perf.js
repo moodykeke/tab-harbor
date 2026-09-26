@@ -73,10 +73,20 @@ BGTStore.buildUrlIdentity(big);
    会把 1 万条上限的缓存挤爆,导致随后的"热缓存"基准其实每次都全量重解析
    (实测 27ms → 674ms),测出来的不是热路径而是 GC 抖动。
    冷路径的固有成本由"缓存容量边界"那一项确定性测试来守,不用计时阈值。 */
+let variant = null;
+function makeVariant() {
+  // 浅拷贝大库、只改一条记录标题:指纹必然未中,计时的是**全量重建**成本
+  const recs = big.records.slice();
+  recs[0] = Object.assign({}, recs[0], { title: '指纹变体 ' + Math.random().toString(36).slice(2, 6) });
+  return Object.assign({}, big, { records: recs });
+}
 const BENCHES = [
   ['buildUrlIdentity(热缓存:同一大库重复解析)',
     () => BGTStore.buildUrlIdentity(big),
     () => BGTStore.buildUrlIdentity(big)],   // 计时前重新预热,确保缓存里是大库这一份
+  ['buildUrlIdentity(指纹未中:内容变更后重建)',
+    () => BGTStore.buildUrlIdentity(variant),
+    () => { variant = makeVariant(); }],     // 每轮换新变体,确保计时那次指纹未中
   ['diffTabs(1000 标签集)',
     () => BGTStore.diffTabs(big.groups.slice(0, 8).flatMap((g) => g.tabs), big.records.slice(0, 500).flatMap((r) => r.tabs))],
   ['weeklyReport(300 条记录)', () => BGTStore.weeklyReport(big)],
