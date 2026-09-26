@@ -452,8 +452,7 @@ export async function mergeSimilarPair(sim) {
   const b = state.data.groups.find((g) => g.id === sim.bId);
   if (!a || !b) { toast(tr('分组已不存在')); return; }
   const before = snapshotGroups();
-  const seen = new Set(a.tabs.map((t) => t.url));
-  for (const t of b.tabs) if (!seen.has(t.url)) a.tabs.push(t);
+  BGTStore.appendNewTabs(a.tabs, b.tabs); // 身份键去重:与 similarGroups 的相似度口径一致
   state.data.groups = state.data.groups.filter((g) => g.id !== b.id);
   await persistAndRender();
   $('#dupDialog').close();
@@ -559,10 +558,12 @@ export async function tidyByDomain() {
         buckets.set(name, {
           reused: state.data.groups.find((x) => !x.archived && (x.title || '') === name),
           tabs: [],
+          keys: new Set(), // 身份键:与全局去重口径一致
         });
       }
       const bucket = buckets.get(name);
-      if (!bucket.tabs.some((x) => x.url === t.url)) bucket.tabs.push(t);
+      const key = BGTStore.normalizeUrl(t.url).key;
+      if (!bucket.keys.has(key)) { bucket.keys.add(key); bucket.tabs.push(t); }
     }
   }
 
@@ -660,12 +661,7 @@ export async function batchMerge() {
   if (groups.length < 2) { toast(tr('请至少选择两个分组')); return; }
   const before = snapshotGroups();
   const target = groups[0];
-  const seen = new Set(target.tabs.map((t) => t.url));
-  for (const g of groups.slice(1)) {
-    for (const t of g.tabs) {
-      if (!seen.has(t.url)) { target.tabs.push(t); seen.add(t.url); }
-    }
-  }
+  for (const g of groups.slice(1)) BGTStore.appendNewTabs(target.tabs, g.tabs);
   const removed = groups.slice(1).map((g) => g.id);
   state.data.groups = state.data.groups.filter((g) => !removed.includes(g.id));
   state.selected.clear();

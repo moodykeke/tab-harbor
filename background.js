@@ -135,8 +135,8 @@ async function saveAllWindows(opts) {
 /** 按设置关闭已保存的标签页 */
 async function closeSavedTabs(rawTabs, group, settings) {
   if (!settings.closeSavedTabs || !group) return;
-  const savedUrls = new Set(group.tabs.map((t) => t.url));
-  const ids = rawTabs.filter((t) => savedUrls.has(t.url)).map((t) => t.id);
+  const savedKeys = BGTStore.keySet(group.tabs); // 身份键:与"已保存过"的判定同一语义
+  const ids = rawTabs.filter((t) => savedKeys.has(BGTStore.normalizeUrl(t.url).key)).map((t) => t.id);
   if (ids.length) {
     try {
       await chrome.tabs.remove(ids);

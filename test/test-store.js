@@ -478,6 +478,56 @@ test('weeklyReport:滚动周节奏/最常停泊/日并集去重', () => {
   assert.strictEqual(yesterday.tabs.length, 2); // 并集去重:github/a 只算一次
 });
 
+/* ---- 身份层去重:全链路同口径 ---- */
+
+test('keySet/dedupeTabs/appendNewTabs:utm、fragment、尾斜杠归一为同一身份', () => {
+  const tabs = [
+    { url: 'https://x.com/a' },
+    { url: 'https://x.com/a?utm_source=fb' },
+    { url: 'https://x.com/a#top' },
+    { url: 'https://x.com/a/' },
+    { url: 'https://x.com/b' },
+  ];
+  assert.strictEqual(BGTStore.keySet(tabs).size, 2);
+  assert.strictEqual(BGTStore.dedupeTabs(tabs).length, 2);
+  const target = [{ url: 'https://x.com/a' }];
+  assert.strictEqual(BGTStore.appendNewTabs(target, tabs), 1); // 只有 b 是新的
+  assert.strictEqual(target.length, 2);
+});
+
+test('buildGroup:dedupe 开启时 utm/尾斜杠变体合并为一', () => {
+  // 回归:此前用原始 URL 字符串比较,这三个变体会被全部存下
+  const out = BGTStore.buildGroup([
+    { url: 'https://a.com/x' },
+    { url: 'https://a.com/x?utm_source=rss' },
+    { url: 'https://a.com/x/' },
+  ], { ...SETTINGS_BASE, dedupe: true });
+  assert.strictEqual(out.tabs.length, 1);
+  assert.strictEqual(out.tabs[0].url, 'https://a.com/x');
+});
+
+test('相似分组闭环:合并去重与相似度判定同口径,合并后不再重复建议', () => {
+  const data = BGTStore.normalizeData({ groups: [
+    { id: 'A', title: 'A', tabs: [
+      { url: 'https://s.com/1' }, { url: 'https://s.com/2' }, { url: 'https://s.com/3' }] },
+    { id: 'B', title: 'B', tabs: [
+      { url: 'https://s.com/1?utm_source=fb' }, { url: 'https://s.com/2#f' }, { url: 'https://s.com/3/' }] },
+  ]});
+  const sims = BGTStore.similarGroups(data, 0.8);
+  assert.strictEqual(sims.length, 1);
+  assert.strictEqual(sims[0].score, 1);
+
+  // 修复前合并用原始串去重 → A 会变成 6 条,洞察下次仍报同一条"80% 重叠"
+  const a = data.groups.find((g) => g.id === 'A');
+  const b = data.groups.find((g) => g.id === 'B');
+  BGTStore.appendNewTabs(a.tabs, b.tabs);
+  assert.strictEqual(a.tabs.length, 3);
+  assert.strictEqual(BGTStore.keySet(a.tabs).size, 3);
+
+  data.groups = data.groups.filter((g) => g.id !== 'B');
+  assert.strictEqual(BGTStore.similarGroups(data, 0.8).length, 0);
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

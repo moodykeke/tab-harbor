@@ -506,6 +506,48 @@
     return normalizeUrl(u).key;
   }
 
+  /*
+   * 去重/查重的唯一入口。
+   * 纪律:任何"这个标签是否已存在"的判断都必须走下面三个函数,禁止退回原始 URL 字符串比较。
+   * 混用会直接损坏用户可见的闭环 —— similarGroups 用归一化键算出"80% 重叠"并建议合并,
+   * 而合并若用原始串去重,合完仍然留着 https://x/a 与 https://x/a?utm_source=fb 两份,
+   * 下次打开洞察又会看到同一条建议。
+   */
+
+  /** 标签集合的身份键集合 */
+  function keySet(tabs) {
+    const out = new Set();
+    for (const t of tabs || []) out.add(normalizeUrl(t && t.url).key);
+    return out;
+  }
+
+  /** 按身份键去重,保留首次出现者与原顺序 */
+  function dedupeTabs(tabs) {
+    const seen = new Set();
+    const out = [];
+    for (const t of tabs || []) {
+      const k = normalizeUrl(t && t.url).key;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(t);
+    }
+    return out;
+  }
+
+  /** 把 list 中身份键尚未出现于 target 的标签就地追加到 target;返回追加条数 */
+  function appendNewTabs(target, list) {
+    const seen = keySet(target);
+    let added = 0;
+    for (const t of list || []) {
+      const k = normalizeUrl(t && t.url).key;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      target.push(t);
+      added += 1;
+    }
+    return added;
+  }
+
   /**
    * 标签来源链(URLIdentity 聚合层):
    * 以归一化键聚合 分组 + 工作区 + 记录 三个来源,派生
@@ -868,8 +910,7 @@
         return !g.archived && (g.title || '') === route.name;
       });
       if (existing) {
-        const seen = new Set(existing.tabs.map(function (t) { return normalizeUrl(t.url).key; }));
-        for (const t of route.tabs) if (!seen.has(normalizeUrl(t.url).key)) existing.tabs.push(t);
+        appendNewTabs(existing.tabs, route.tabs);
       } else {
         data.groups.unshift(normalizeGroup({ title: route.name, createdAt: Date.now(), tabs: route.tabs }));
         created += 1;
@@ -916,8 +957,9 @@
       if (t.pinned && settings.excludePinned) continue;
       if (settings.skipSpecialPages && SPECIAL_URL_RE.test(url)) continue;
       if (!url || url === 'about:blank') continue;
-      if (settings.dedupe && seen.has(url)) continue;
-      seen.add(url);
+      const key = normalizeUrl(url).key; // 去重按身份键,与全局 URLIdentity 一致
+      if (settings.dedupe && seen.has(key)) continue;
+      seen.add(key);
       tabs.push(makeStoredTab(t, now)); // 记录本次保存时刻,用于重复保存统计
     }
     if (!tabs.length) return null;
@@ -1001,6 +1043,9 @@
     saveBackups: saveBackups,
     parseBackup: parseBackup,
     urlKey: urlKey,
+    keySet: keySet,
+    dedupeTabs: dedupeTabs,
+    appendNewTabs: appendNewTabs,
     similarGroups: similarGroups,
     routeTabsByRules: routeTabsByRules,
     applyRoutedGroups: applyRoutedGroups,

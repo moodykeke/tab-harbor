@@ -93,8 +93,8 @@
               result = { ok: true, saved: 0, allKnown: true };
             } else if (group) {
               const seen = new Set();
-              data.groups.forEach(function (g) { g.tabs.forEach(function (t) { seen.add(t.url); }); });
-              const dupCount = group.tabs.filter(function (t) { return seen.has(t.url); }).length;
+              data.groups.forEach(function (g) { BGTStore.keySet(g.tabs).forEach(function (k) { seen.add(k); }); });
+              const dupCount = group.tabs.filter(function (t) { return seen.has(BGTStore.normalizeUrl(t.url).key); }).length;
               group.title = BGTStore.defaultGroupTitle();
               data.groups.unshift(group);
               writeData(data);
