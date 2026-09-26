@@ -308,6 +308,7 @@ function createEnv(opts) {
           groups: storage.get('bgtGroups') || [],
           workspaces: storage.get('bgtWorkspaces') || [],
           records: storage.get('bgtRecords') || [],
+          excerpts: storage.get('bgtExcerpts') || [],
           settings: meta.settings || {},
           updatedAt: meta.updatedAt,
         });

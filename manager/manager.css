@@ -764,6 +764,9 @@
   transition: background 0.12s, color 0.12s;
 }
 .dup-chip:hover { background: var(--primary-soft); color: var(--primary); }
+/* 摘录条目:静态片段,悬停显示 80 字快照 —— 没有目的地的项不做可点击假象 */
+.dup-chip--static { cursor: default; }
+.dup-chip--static:hover { background: var(--surface-2); color: var(--text-2); }
 
 /* ---------------- 云端备份设置 ---------------- */
 

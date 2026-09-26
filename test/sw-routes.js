@@ -233,6 +233,25 @@ test('saveSettings:补丁落 SW 新鲜状态且只写 meta —— 并发分组�
   assert.deepStrictEqual(metaSets[metaSets.length - 1].slice().sort(), ['bgtMeta'], 'settings 补丁只允许写 bgtMeta');
 });
 
+test('右键「存为摘录」:trim 后落 bgtExcerpts,且只写 bgtExcerpts+bgtMeta(Wave 3.1)', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  await env.fire('contextMenus.onClicked',
+    { menuItemId: 'bgt-excerpt', selectionText: '  重要结论:分键消除了写放大。  ', pageUrl: 'https://a.com/doc' },
+    { id: 9, url: 'https://a.com/doc', title: '设计文档' });
+  await env.settle(60);
+  const d = env.data();
+  assert.strictEqual(d.excerpts.length, 1, '应写入一条摘录');
+  assert.strictEqual(d.excerpts[0].text, '重要结论:分键消除了写放大。', 'selectionText 需 trim');
+  assert.strictEqual(d.excerpts[0].url, 'https://a.com/doc');
+  assert.strictEqual(d.excerpts[0].tabTitle, '设计文档');
+  // 写隔离:摘录只允许碰 bgtExcerpts + bgtMeta(改回整包写此断言必红)
+  const sets = env.callsOf('storage.local.set').map((c) => c.args[0]).filter((ks) => ks.includes('bgtExcerpts'));
+  assert.ok(sets.length >= 1, '应有含 bgtExcerpts 的写');
+  assert.deepStrictEqual(sets[sets.length - 1].slice().sort(), ['bgtExcerpts', 'bgtMeta'], '摘录只允许写这两个键');
+  const badge = env.callsOf('action.setBadgeText').pop();
+  assert.ok(badge && badge.args[0].text === '✓', 'acted → 徽章闪 ✓ 反馈');
+});
+
 test('renameGroup 对不存在的 id 返回 not-found', async () => {
   const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
   const res = await env.send({ action: 'renameGroup', groupId: 'nope', title: 'x' });

@@ -552,7 +552,8 @@ function stubStorage(initial) {
   return { mem, setCalls };
 }
 
-const K = { meta: 'bgtMeta', groups: 'bgtGroups', ws: 'bgtWorkspaces', rec: 'bgtRecords' };
+const K = { meta: 'bgtMeta', groups: 'bgtGroups', ws: 'bgtWorkspaces', rec: 'bgtRecords', exc: 'bgtExcerpts' };
+const ALL_KEYS = [K.groups, K.meta, K.rec, K.ws, K.exc].sort(); // 全量写 = 全部集合键 + meta,单次 set
 
 function legacyBlob() {
   return {
@@ -580,12 +581,12 @@ test('ADR-001 §9.1: v2 单键加载即迁移 —— 四键出现、旧键移除
   assert.strictEqual(data.records.length, 1);
 });
 
-test('ADR-001 §9.3: 迁移写是单次原子 set(四键同调用)', async () => {
+test('ADR-001 §9.3: 迁移写是单次原子 set(全部键同调用)', async () => {
   const env = stubStorage({ bgtData: legacyBlob() });
   await BGTStore.load();
   const migrationWrites = env.setCalls.filter((ks) => ks.includes(K.meta));
   assert.strictEqual(migrationWrites.length, 1, '迁移只应有一次含 meta 的写');
-  assert.deepStrictEqual(migrationWrites[0], [K.groups, K.meta, K.rec, K.ws].sort(), '四键必须在同一次 set 里');
+  assert.deepStrictEqual(migrationWrites[0], ALL_KEYS, '所有键必须在同一次 set 里');
 });
 
 test('ADR-001 §9.2: 仅触 groups 的写不碰 records 键(分键收益可证伪)', async () => {
@@ -606,7 +607,7 @@ test('缺省 persist 为全量单次原子写(迁移/恢复/导入路径)', asyn
   env.setCalls.length = 0;
   await BGTStore.persist(data);
   assert.strictEqual(env.setCalls.length, 1, '全量写应是单次 set');
-  assert.deepStrictEqual(env.setCalls[0], [K.groups, K.meta, K.rec, K.ws].sort());
+  assert.deepStrictEqual(env.setCalls[0], ALL_KEYS);
 });
 
 test('settings-only 写只落 meta(popup 选项路径不重写任何集合)', async () => {
@@ -672,6 +673,40 @@ test('WP-1.3: 任何输入改动都使缓存失效 —— 无过期窗口(防抖
 
   data.groups[0].title = '改组名';
   assert.notStrictEqual(BGTStore.buildUrlIdentity(data), b, '分组标题(occurrences.refTitle)改动必须未命中');
+});
+
+/* ---- Wave 3.1:摘录集合(证据层,零新权限的内容级信号) ---- */
+
+test('摘录归一化:trim、截断 500 字、滚动窗口 300 条', () => {
+  const x = BGTStore.normalizeExcerpt({ url: ' https://a.com/doc ', text: '结论'.repeat(400), tabTitle: 'T', savedAt: 123 });
+  assert.strictEqual(x.url, 'https://a.com/doc');
+  assert.strictEqual(x.text.length, BGTStore.EXCERPT_TEXT_MAX, '文本截断到上限');
+  assert.ok(x.id.startsWith('e'), '摘录 id 前缀');
+  const many = [];
+  for (let i = 0; i < BGTStore.EXCERPTS_MAX + 5; i += 1) many.push({ text: 'x' + i });
+  const d = BGTStore.normalizeData({ excerpts: many });
+  assert.strictEqual(d.excerpts.length, BGTStore.EXCERPTS_MAX, '滚动窗口生效');
+  assert.strictEqual(d.excerpts[d.excerpts.length - 1].text, 'x' + (BGTStore.EXCERPTS_MAX + 4), '保留最新');
+});
+
+test('摘录计入身份索引:第四种观测来源(独立事件空间 + 80 字快照)', () => {
+  const data = BGTStore.emptyData();
+  data.records = [BGTStore.makeRecord({ id: 'r1', title: '记', createdAt: 100, tabs: [{ url: 'https://a.com/x', title: 'A', savedAt: 100 }] })];
+  data.excerpts = [BGTStore.normalizeExcerpt({ id: 'e1', url: 'https://a.com/x', text: '关键结论'.repeat(30), tabTitle: '文档', savedAt: 200 })];
+  const e = BGTStore.lookupIndex(BGTStore.buildUrlIdentity(data), 'https://a.com/x');
+  assert.strictEqual(e.occurrences.length, 2, '记录 + 摘录各一条');
+  assert.strictEqual(e.seenCount, 2, '摘录占独立事件空间(ev:x:)');
+  const ex = e.occurrences.find((o) => o.source === 'excerpt');
+  assert.ok(ex, '摘录 occurrence 存在');
+  assert.strictEqual(ex.tabTitle.length, 80, 'occurrence 只带 80 字快照,完整文本在集合本身');
+});
+
+test('摘录改动使指纹缓存失效(WP-1.3 的指纹覆盖摘录)', () => {
+  const data = BGTStore.emptyData();
+  data.excerpts = [BGTStore.normalizeExcerpt({ id: 'e1', url: 'https://a.com/x', text: '旧摘录', savedAt: 100 })];
+  const a = BGTStore.buildUrlIdentity(data);
+  data.excerpts[0].text = '新摘录';
+  assert.notStrictEqual(BGTStore.buildUrlIdentity(data), a, '摘录文本改动必须未命中');
 });
 
 run().then(() => {

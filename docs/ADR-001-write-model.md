@@ -104,3 +104,13 @@ v3.12 的项目内 checkpoint 时间线、v4.0 的被动 checkpoint 与 Delta �
 2. **分键收益可证伪**:仅触 groups 的 `persist` 断言**不产生** `bgtRecords` 键写入(mock 层可观测)。把实现改回整包写,此断言必须变红。
 3. **原子性**:迁移单测中断言四个新键由单次 `set()` 写入(mock 层记录调用次数)。
 4. mock 通用化后,`test/seams.js` 的 `PREVIEW_UNSUPPORTED` 豁免表**不得**为此新增条目。
+
+## 附录 A:增量集合(2026-09-26,Wave 3.1 落地时补充)
+
+摘录集合 `bgtExcerpts`(单条 ≤500 字,滚动窗口 300 条)依本 ADR 的分键布局新增:**新增集合 = 新增一个键**,对既有布局是纯增量 —— 旧版本读到未知键会忽略,新版本读到缺失键得空集,`STORAGE_SCHEMA` 不变、无需迁移。
+
+约束继承与新纪律:
+
+- 摘录属证据层(手册 §7.3):只增不改;单条上限与滚动窗口保证不触碰"MB 级内容不进 store"的边界;
+- **任何新集合必须同步收录进五处**:`buildWrites`(写)、`identityFingerprint`(缓存正确性)、`makeFullBackup` / `applyFullRestore`(备份完整性)、`stateFingerprint`(备份去重)。漏掉指纹是缓存正确性缺陷,漏掉备份是数据丢失缺陷 —— 两类均有测试看守;
+- 增量集合不参与既有集合的写入键集(摘录只写 `bgtExcerpts`+`bgtMeta`),写隔离由 sw-routes 断言看守并通过变异验证。

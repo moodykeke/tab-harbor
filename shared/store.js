@@ -15,6 +15,9 @@
   const GROUPS_KEY = 'bgtGroups';
   const WORKSPACES_KEY = 'bgtWorkspaces';
   const RECORDS_KEY = 'bgtRecords';
+  const EXCERPTS_KEY = 'bgtExcerpts';     // Wave 3.1 摘录集合(证据层,增量键:老布局无此键 ⇒ 空集,无需迁移)
+  const EXCERPTS_MAX = 300;               // 滚动窗口:300 × ≤500 字符,最坏 <1MB,不触碰"MB 级内容"边界
+  const EXCERPT_TEXT_MAX = 500;
   const LEGACY_BACKUP_KEY = 'bgtData_v2_backup';
   const STORAGE_SCHEMA = 3;               // 存储布局版本(数据形状仍是 DATA_VERSION)
   const SNAPSHOT_KEY = 'bgtSnapshots';
@@ -69,7 +72,20 @@
       groups: [],
       workspaces: [],
       records: [],
+      excerpts: [],
       settings: Object.assign({}, DEFAULT_SETTINGS),
+    };
+  }
+
+  /** 摘录(Wave 3.1):右键选中的文字,挂在来源页面的那次观测上 —— 证据层,只增不改 */
+  function normalizeExcerpt(raw) {
+    const x = raw && typeof raw === 'object' ? raw : {};
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : genId('e'),
+      url: (x.url || '').trim(),
+      text: String(x.text || '').trim().slice(0, EXCERPT_TEXT_MAX),
+      tabTitle: typeof x.tabTitle === 'string' ? x.tabTitle : '',
+      savedAt: Number(x.savedAt) || Date.now(),
     };
   }
 
@@ -198,6 +214,7 @@
       groups: Array.isArray(d.groups) ? d.groups.map(normalizeGroup) : [],
       workspaces: Array.isArray(d.workspaces) ? d.workspaces.map(normalizeWorkspace) : [],
       records: Array.isArray(d.records) ? d.records.map(normalizeRecord).slice(-RECORDS_MAX) : [],
+      excerpts: Array.isArray(d.excerpts) ? d.excerpts.map(normalizeExcerpt).slice(-EXCERPTS_MAX) : [],
       settings: normalizeSettings(d.settings),
     };
     if (d.updatedAt) out.updatedAt = d.updatedAt;
@@ -206,13 +223,14 @@
 
   /** 读取全部数据(合并视图);发现 v3 分键直接组装,v2 单键自动迁移,发现 v1 结构(tabGroups/options)时自动迁移 */
   async function load() {
-    const res = await chrome.storage.local.get([META_KEY, GROUPS_KEY, WORKSPACES_KEY, RECORDS_KEY, STORE_KEY, 'tabGroups', 'options']);
+    const res = await chrome.storage.local.get([META_KEY, GROUPS_KEY, WORKSPACES_KEY, RECORDS_KEY, EXCERPTS_KEY, STORE_KEY, 'tabGroups', 'options']);
     const meta = res[META_KEY];
     if (meta && typeof meta === 'object') {
       return normalizeData({
         groups: res[GROUPS_KEY],
         workspaces: res[WORKSPACES_KEY],
         records: res[RECORDS_KEY],
+        excerpts: res[EXCERPTS_KEY],
         settings: meta.settings,
         updatedAt: meta.updatedAt,
       });
@@ -296,6 +314,7 @@
     if (all || collections.groups) out[GROUPS_KEY] = (data.groups || []).map(normalizeGroup);
     if (all || collections.workspaces) out[WORKSPACES_KEY] = (data.workspaces || []).map(normalizeWorkspace);
     if (all || collections.records) out[RECORDS_KEY] = (data.records || []).map(normalizeRecord).slice(-RECORDS_MAX);
+    if (all || collections.excerpts) out[EXCERPTS_KEY] = (data.excerpts || []).map(normalizeExcerpt).slice(-EXCERPTS_MAX);
     return out;
   }
 
@@ -460,6 +479,7 @@
       groups: data.groups,
       workspaces: data.workspaces || [],
       records: data.records || [],
+      excerpts: data.excerpts || [],
       settings,
     };
   }
@@ -479,7 +499,7 @@
 
   /** 当前全量状态指纹(本地备份去重与云端同步判定共用,不含运行态字段) */
   function stateFingerprint(payload) {
-    return JSON.stringify([payload.groups, payload.workspaces, payload.records, payload.settings]);
+    return JSON.stringify([payload.groups, payload.workspaces, payload.records, payload.excerpts, payload.settings]);
   }
 
   async function loadBackups() {
@@ -635,6 +655,7 @@
     for (const g of data.groups || []) { fpField('G'); fpField(g.id); fpField(g.title); fpField(g.createdAt); fpTabs(g.tabs); }
     for (const w of data.workspaces || []) { fpField('W'); fpField(w.id); fpField(w.title); fpField(w.createdAt); fpField(w.lastEventId); fpTabs(w.tabs); }
     for (const r of data.records || []) { fpField('R'); fpField(r.id); fpField(r.title); fpField(r.createdAt); fpTabs(r.tabs); }
+    for (const x of data.excerpts || []) { fpField('X'); fpField(x.id); fpField(x.url); fpField(x.text); fpField(x.tabTitle); fpField(x.savedAt); }
     return fp0 + ',' + fp1;
   }
 
@@ -675,9 +696,11 @@
         entry.firstSeenAt = Math.min(entry.firstSeenAt, at) || at;
         entry.lastSeenAt = Math.max(entry.lastSeenAt, at);
         // 事件去重:同一次收工会在工作区与记录中各留一份引用, eventId 相同只计一次
-        // record 自身即事件(id);workspace 引用其 lastEventId;group 是独立收藏引用
+        // record 自身即事件(id);workspace 引用其 lastEventId;group 是独立收藏引用;
+        // excerpt 是独立的内容级观测(Wave 3.1)
         const eventId = source === 'record' ? 'ev:' + refId
           : source === 'workspace' ? 'ev:' + (wsEvent.get(refId) || refId + ':static')
+          : source === 'excerpt' ? 'ev:x:' + refId
           : 'ev:g:' + refId;
         entry.occurrences.push({
           source, refId, refTitle: refTitle || '', tabTitle: t.title || t.url, at, eventId,
@@ -688,6 +711,11 @@
     for (const g of data.groups || []) add('group', g.id, g.title, g.tabs, g.createdAt);
     for (const w of data.workspaces || []) add('workspace', w.id, w.title, w.tabs, w.createdAt);
     for (const r of data.records || []) add('record', r.id, r.title, r.tabs, r.createdAt);
+    // 摘录作为第四种观测来源计入:occurrence 的 tabTitle 用 80 字片段(完整文本在集合本身,现场面板悬停可读)
+    for (const x of data.excerpts || []) {
+      const snip = x.text ? x.text.slice(0, 80) : x.url;
+      add('excerpt', x.id, x.tabTitle || '', [{ url: x.url, title: snip, savedAt: x.savedAt }], x.savedAt);
+    }
     for (const entry of index.values()) {
       entry.occurrences.sort(function (a, b) { return a.at - b.at; });
       const events = new Set();
@@ -709,6 +737,7 @@
       groups: (payload.groups || []).map((g) => normalizeGroup(g)),
       workspaces: (payload.workspaces || []).map((w) => normalizeWorkspace(w)),
       records: (payload.records || []).map((r) => normalizeRecord(r)).slice(-RECORDS_MAX),
+      excerpts: (payload.excerpts || []).map((x) => normalizeExcerpt(x)).slice(-EXCERPTS_MAX),
       settings,
     };
   }
@@ -1085,6 +1114,9 @@
     GROUPS_KEY: GROUPS_KEY,
     WORKSPACES_KEY: WORKSPACES_KEY,
     RECORDS_KEY: RECORDS_KEY,
+    EXCERPTS_KEY: EXCERPTS_KEY,
+    EXCERPTS_MAX: EXCERPTS_MAX,
+    EXCERPT_TEXT_MAX: EXCERPT_TEXT_MAX,
     LEGACY_BACKUP_KEY: LEGACY_BACKUP_KEY,
     STORAGE_SCHEMA: STORAGE_SCHEMA,
     SNAPSHOT_KEY: SNAPSHOT_KEY,
@@ -1096,6 +1128,7 @@
     emptyData: emptyData,
     normalizeGroup: normalizeGroup,
     normalizeWorkspace: normalizeWorkspace,
+    normalizeExcerpt: normalizeExcerpt,
     normalizeData: normalizeData,
     load: load,
     persist: persist,

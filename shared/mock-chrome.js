@@ -194,6 +194,7 @@
           groups: readSlot(GROUPS_KEY) || [],
           workspaces: readSlot(WORKSPACES_KEY) || [],
           records: readSlot(RECORDS_KEY) || [],
+          excerpts: readSlot('bgtExcerpts') || [],
           settings: meta.settings || {},
           updatedAt: meta.updatedAt,
         };
@@ -219,6 +220,7 @@
     localStorage.setItem(slotName(GROUPS_KEY), JSON.stringify(d.groups || []));
     localStorage.setItem(slotName(WORKSPACES_KEY), JSON.stringify(d.workspaces || []));
     localStorage.setItem(slotName(RECORDS_KEY), JSON.stringify(d.records || []));
+    localStorage.setItem(slotName('bgtExcerpts'), JSON.stringify(d.excerpts || []));
   }
 
   function resolve(v) {

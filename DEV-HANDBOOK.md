@@ -10,7 +10,7 @@
 ## 1. 十分钟上手
 
 ```bash
-# 全部门禁(7 套 108 项,任一失败非零退出)—— 提交前必跑
+# 全部门禁(7 套 112 项,任一失败非零退出)—— 提交前必跑
 node tools/test-all.js
 
 # 出包(先跑门禁,再出商店包 + 审核包,并打印 SHA-256)
@@ -68,17 +68,16 @@ node tools/make-screenshots.js
 
 以下全部是实测值,不是估计。改动后如果这些数字显著漂移,那本身就是要解释的事。
 
-### 门禁:7 套 108 项
+### 门禁:7 套 112 项
 
 | 套件 | 项数 | 覆盖层 |
 | --- | --- | --- |
 | `tools/check-globals.js` | exit 0 | 静态:未声明标识符(漏 import 这类 P0) |
-| `test/test-store.js` | 46 | 数据层纯函数 + 分键存储/迁移(ADR-001 §9)+ 索引指纹记忆化 |
+| `test/test-store.js` | 49 | 数据层纯函数 + 分键存储/迁移(ADR-001 §9)+ 索引指纹 + 摘录 |
 | `test/perf.js` | 10 | 性能(相对基线;含"指纹未中强制重建"防掩盖项) |
-| `test/perf.js` | 9 | 性能(相对基线) |
 | `test/i18n.js` | 5 | 翻译完整性 |
 | `test/integration.js` | 9 | 真实链路 |
-| `test/sw-routes.js` | 29 | **接线层:真实加载 `background.js`** |
+| `test/sw-routes.js` | 31 | **接线层:真实加载 `background.js`** |
 | `test/seams.js` | 8 | 静态契约:UI→SW / mock↔生产 / DOM id |
 
 ### 性能基线(`test/perf-baseline.json`,容差 3×;2026-09-26 分键与记忆化落地后重记)
@@ -269,7 +268,7 @@ node tools/make-screenshots.js
 
 ### 一个 WP 算"做完"的条件
 
-1. `node tools/test-all.js` **7 套 108 项全绿**(项数只会增)
+1. `node tools/test-all.js` **7 套 112 项全绿**(项数只会增)
 2. 行为改动**带一个能证伪的断言**,并通过**变异验证**:把实现改回旧写法,断言必须变红
 3. 新增 SW 路由已登记进 `test/seams.js` 的 `SW_CONTRACT`
 4. 新增 `tr('…')` 键已在 `shared/i18n.js` 的 `EN` 表里(用**单引号**,`test/i18n.js` 是文本扫描不是解析);HTML 静态中文同理

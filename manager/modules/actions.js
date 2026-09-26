@@ -270,13 +270,30 @@ export function openDupMenu(contextGroup, tab, anchor) {
     label: tr('{date} · {group}', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') }),
     icon: (contextGroup && o.source === 'group' && o.refId === contextGroup.id) ? ICONS.check
       : o.source === 'group' ? ICONS.tabs
-      : o.source === 'record' ? ICONS.list : ICONS.briefcase,
+      : o.source === 'record' ? ICONS.list
+      : o.source === 'excerpt' ? ICONS.copy
+      : ICONS.briefcase,
     onPick: () => {
       if (o.source === 'group') jumpToGroup(o.refId);
       else if (o.source === 'record') openRecordDialogById(o.refId);
       else if (o.source === 'workspace') locateWorkspace(o.refId);
+      else if (o.source === 'excerpt') copyExcerptText(o.refId);
     },
   })));
+}
+
+/** 摘录条目的动作:复制全文(摘录没有"可跳转的目的地",复制是它的自然动作) */
+function copyExcerptText(excerptId) {
+  const x = state.data.excerpts.find((e) => e.id === excerptId);
+  if (!x) return;
+  try {
+    navigator.clipboard.writeText(x.text).then(
+      () => toast(tr('已复制摘录全文')),
+      () => toast(tr('复制失败'), true),
+    );
+  } catch (e) {
+    toast(tr('复制失败'), true);
+  }
 }
 
 /** 从来源链跳到工作区卡片 */
@@ -321,7 +338,13 @@ export function openDupDialog() {
     for (const o of occ.slice(-12)) {
       const label = o.source === 'group' ? tr('{date} · {group}', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') })
         : o.source === 'record' ? tr('{date} · 记录', { date: fmtDate(o.at) })
+        : o.source === 'excerpt' ? tr('{date} · 摘录', { date: fmtDate(o.at) })
         : tr('{date} · 工作区', { date: fmtDate(o.at) });
+      if (o.source === 'excerpt') {
+        // 摘录没有可跳转的目的地:静态片段,悬停读快照(复制全文走 ×N 徽章菜单)
+        chips.appendChild(h('span', { class: 'dup-chip dup-chip--static', title: o.tabTitle }, label));
+        continue;
+      }
       const chip = h('button', {
         class: 'dup-chip', type: 'button',
         title: o.source === 'group' ? tr('点击跳转到该分组') : o.source === 'record' ? tr('点击查看当时现场') : tr('点击定位到该工作区'),

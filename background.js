@@ -449,6 +449,11 @@ async function rebuildContextMenus() {
     title: tr('把此页面存为新分组'),
     contexts: ['page', 'link'],
   });
+  create({
+    id: 'bgt-excerpt', // Wave 3.1:唯一"零新权限"的内容级信号(已声明的 contextMenus + selection 上下文)
+    title: tr('把选中文字存为摘录'),
+    contexts: ['selection'],
+  });
   const groups = data.groups.filter((g) => !g.archived).slice(0, 8);
   if (groups.length) {
     create({
@@ -514,6 +519,21 @@ async function onContextMenuClicked(info, tab) {
     acted = true;
   } else if (String(info.menuItemId).startsWith('g:')) {
     acted = await addTabToGroup(String(info.menuItemId).slice(2), tab);
+  } else if (info.menuItemId === 'bgt-excerpt') {
+    // 摘录走 SW 串行队列,只写 bgtExcerpts+meta(分键收益与写隔离由测试看守)
+    acted = await BGTStore.mutate(async () => {
+      const text = String(info.selectionText || '').trim();
+      if (!text || !info.pageUrl) return false;
+      const data = await BGTStore.load();
+      data.excerpts.unshift(BGTStore.normalizeExcerpt({
+        url: info.pageUrl,
+        text,
+        tabTitle: (tab && tab.title) || '',
+        savedAt: Date.now(),
+      }));
+      await BGTStore.persist(data, { excerpts: true });
+      return true;
+    });
   }
   if (acted) flashBadge();
 }
