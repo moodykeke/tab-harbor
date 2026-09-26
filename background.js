@@ -665,6 +665,12 @@ if (chrome.commands && chrome.commands.onCommand) {
 
 /* ---------------- 生命周期 ---------------- */
 
+// MV3 纪律:事件监听器必须在 SW 顶层同步注册。写在 onInstalled/onStartup 回调里
+// 有两个问题:① SW 被回收后若在其它时机重启,omnibox 监听器就缺失(地址栏建议失效);
+// ② 同一实例内 onInstalled 与 onStartup 都触发时会被注册两次 → 建议重复。
+// (contextMenus 的 create 是持久化的,放在生命周期回调里仍正确;omnibox 的 addListener 不是。)
+initOmnibox();
+
 chrome.runtime.onInstalled.addListener(async () => {
   let data = await BGTStore.load(); // load() 内部完成 v1 → v2 迁移
   const before = JSON.stringify(data.settings);
@@ -672,7 +678,6 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (JSON.stringify(data.settings) !== before) await BGTStore.persist(data);
   updateBadge(data);
   rebuildContextMenus();
-  initOmnibox();
   ensureAlarms();
 });
 
@@ -683,7 +688,6 @@ chrome.runtime.onStartup.addListener(async () => {
   if (JSON.stringify(data.settings) !== before) await BGTStore.persist(data);
   updateBadge(data);
   rebuildContextMenus();
-  initOmnibox();
   ensureAlarms();
   runDailyBackup(); // 启动即补当日备份(内容无变化时自动跳过)
 });
