@@ -780,15 +780,74 @@ export async function deleteWorkspace(ws) {
 export function openWsDialog() {
   $('#wsName').value = '';
   $('#wsCloseTabs').checked = true;
+  const nameEl = $('#wsName');
+  if (!nameEl.dataset.bound) {
+    nameEl.dataset.bound = '1';
+    nameEl.addEventListener('input', renderWsConflict); // 2.1a:输入即见"将被覆盖的是什么"
+  }
+  renderWsConflict();
   $('#wsDialog').showModal();
   setTimeout(() => $('#wsName').focus(), 60);
+}
+
+/* ---------------- 2.1a:同名冲突可见(决策 2026-09-27) ---------------- */
+
+let wsChoice = null; // null(无冲突/未选) | { mode:'update', id, remember } | { mode:'new' }
+
+function renderWsConflict() {
+  const box = $('#wsConflict');
+  if (!box) return;
+  const title = $('#wsName').value.trim();
+  const matches = title ? state.data.workspaces.filter((w) => w.title === title) : [];
+  wsChoice = null;
+  box.textContent = '';
+  if (!matches.length) { box.hidden = true; return; }
+  box.hidden = false;
+  const mk = (choice, label, on) => {
+    const b = h('button', { class: 'ws-conflict__btn' + (on ? ' ws-conflict__btn--on' : ''), type: 'button' }, label);
+    b.addEventListener('click', () => {
+      wsChoice = choice;
+      box.querySelectorAll('button').forEach((x) => x.classList.remove('ws-conflict__btn--on'));
+      b.classList.add('ws-conflict__btn--on');
+    });
+    return b;
+  };
+  const row = h('div', { class: 'ws-conflict__row' });
+  if (matches.length === 1) {
+    const w = matches[0];
+    box.appendChild(h('div', { class: 'ws-conflict__line',
+      text: tr('同名工作区:{n} 个标签 · 收于 {when}', { n: w.tabs.length, when: relTime(w.createdAt) }) }));
+    // 默认高亮「更新它」(保持旧行为),但用户已经看到了将被覆盖的内容;选它 = 记住
+    row.appendChild(mk({ mode: 'update', id: w.id, remember: true }, tr('更新它'), true));
+    wsChoice = { mode: 'update', id: w.id, remember: true };
+  } else {
+    box.appendChild(h('div', { class: 'ws-conflict__line', text: tr('有 {n} 个同名工作区:', { n: matches.length }) }));
+    matches.forEach((w) => {
+      row.appendChild(mk({ mode: 'update', id: w.id, remember: true },
+        tr('更新它') + ' · ' + w.tabs.length + ' · ' + relTime(w.createdAt), false));
+    });
+  }
+  row.appendChild(mk({ mode: 'new' }, tr('新建一个'), false));
+  box.appendChild(row);
 }
 
 export async function confirmClockOut() {
   const title = $('#wsName').value;
   const closeTabs = $('#wsCloseTabs').checked;
   const allWindows = $('#wsAllWindows') ? $('#wsAllWindows').checked : false;
-  const res = await send({ action: 'saveWorkspace', title, closeTabs, allWindows });
+  const payload = { action: 'saveWorkspace', title, closeTabs, allWindows };
+  const box = $('#wsConflict');
+  if (box && !box.hidden) {
+    if (!wsChoice) { toast(tr('请先选择:更新同名工作区,或新建一个'), true); return; }
+    if (wsChoice.mode === 'update') {
+      payload.updateMode = 'update';
+      payload.updateId = wsChoice.id;
+      payload.remember = !!wsChoice.remember;
+    } else {
+      payload.updateMode = 'new';
+    }
+  }
+  const res = await send(payload);
   if (res && res.ok) {
     $('#wsDialog').close();
     state.view = 'workspaces';
@@ -800,6 +859,11 @@ export async function confirmClockOut() {
     toast(tr('已收工:{n} 个标签存入「{name}」', { n: res.saved, name: res.title }) + multi);
   } else if (res && res.reason === 'empty') {
     toast(tr('当前窗口没有可保存的标签'), true);
+  } else if (res && (res.reason === 'name-conflict' || res.reason === 'name-ambiguous')) {
+    // 兜底:本地快照可能落后于后台(如快捷键并发保存)→ 重取数据重渲染冲突行
+    state.data = await BGTStore.load();
+    renderWsConflict();
+    toast(tr('检测到同名工作区,请选择:更新它,或新建一个'), true);
   } else {
     toast(tr('收工失败:后台服务不可用'), true);
   }

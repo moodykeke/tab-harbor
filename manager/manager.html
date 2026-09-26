@@ -232,7 +232,8 @@
       </label>
       <label class="checkbox set__item"><input type="checkbox" id="wsCloseTabs" checked> 保存后关闭这些标签页(下次一键开工)</label>
       <label class="checkbox set__item"><input type="checkbox" id="wsAllWindows"> 包含全部窗口(多显示器各存一个窗口)</label>
-      <p class="ws__hint">同名工作区会覆盖更新,适合每天重复使用。</p>
+      <div id="wsConflict" class="ws-conflict" hidden></div>
+      <p class="ws__hint">同名工作区会先询问:更新它,还是新建一个;选「更新它」后会记住,适合每天重复收工。</p>
     </div>
     <div class="dialog__foot">
       <button class="btn" id="wsCancel">取消</button>

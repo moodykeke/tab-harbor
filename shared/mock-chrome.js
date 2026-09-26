@@ -275,19 +275,45 @@
             }).filter(function (g) { return g.tabs.length; });
             const tabs = winGroups.reduce(function (acc, g) { return acc.concat(g.tabs); }, []);
             const title = (msg.title || '').trim() || BGTStore.defaultGroupTitle();
-            const existing = data.workspaces.find(function (w) { return w.title === title; });
-            const payload = { title: title, createdAt: now, tabs: tabs, windows: winGroups.length > 1 ? winGroups : undefined };
-            if (existing) { Object.assign(existing, BGTStore.normalizeWorkspace(payload), { id: existing.id }); existing.createdAt = now; }
-            else { data.workspaces.unshift(BGTStore.normalizeWorkspace(payload)); }
-            let recordCreated = false;
-            if (!Array.isArray(data.records)) data.records = [];
-            const rec = BGTStore.makeRecord({ title: title, createdAt: now, tabs: tabs.map(function (t) { return Object.assign({}, t); }), workspaceId: (existing && existing.id) || (data.workspaces[0] && data.workspaces[0].id), source: 'clockout' });
-            if (!BGTStore.recordEqualsLast(data.records, rec)) {
-              data.records = data.records.concat(rec).slice(-BGTStore.RECORDS_MAX);
-              recordCreated = true;
+            // 与生产同口径(2.1a):0/1/N 分支 + autoUpdate + 生命周期字段保留
+            const matches = data.workspaces.filter(function (w) { return w.title === title; });
+            const mode = msg.updateMode || '';
+            const brief = function (w) { return { id: w.id, title: w.title, tabs: w.tabs.length, savedAt: w.createdAt, autoUpdate: !!w.autoUpdate }; };
+            let existing = null;
+            let refused = null;
+            if (mode === 'update') {
+              existing = (msg.updateId && matches.filter(function (w) { return w.id === msg.updateId; })[0]) || (matches.length === 1 ? matches[0] : null);
+              if (!existing) refused = { ok: false, reason: 'name-ambiguous', candidates: matches.map(brief) };
+            } else if (mode !== 'new' && matches.length) {
+              const autos = matches.filter(function (w) { return w.autoUpdate; });
+              if (autos.length === 1) existing = autos[0];
+              else if (matches.length === 1) refused = { ok: false, reason: 'name-conflict', conflict: brief(matches[0]) };
+              else refused = { ok: false, reason: 'name-ambiguous', candidates: matches.map(brief) };
             }
-            writeData(data);
-            result = { ok: true, saved: tabs.length, title: title, windows: winGroups.length, recordCreated: recordCreated };
+            if (refused) {
+              result = refused; // 冲突未决不落盘,由调用方呈现选择后重发
+            } else {
+              const payload = { title: title, createdAt: now, tabs: tabs, windows: winGroups.length > 1 ? winGroups : undefined };
+              if (existing) {
+                const k1 = existing.lastEventId, k2 = existing.lastRestoredAt;
+                Object.assign(existing, BGTStore.normalizeWorkspace(payload), { id: existing.id });
+                existing.createdAt = now;
+                existing.lastEventId = k1;
+                existing.lastRestoredAt = k2;
+                if (msg.remember) existing.autoUpdate = true;
+              } else { data.workspaces.unshift(BGTStore.normalizeWorkspace(payload)); }
+              let recordCreated = false;
+              if (!Array.isArray(data.records)) data.records = [];
+              const rec = BGTStore.makeRecord({ title: title, createdAt: now, tabs: tabs.map(function (t) { return Object.assign({}, t); }), workspaceId: (existing && existing.id) || (data.workspaces[0] && data.workspaces[0].id), source: 'clockout' });
+              if (!BGTStore.recordEqualsLast(data.records, rec)) {
+                data.records = data.records.concat(rec).slice(-BGTStore.RECORDS_MAX);
+                recordCreated = true;
+                const wsRef = (existing && existing.id) ? data.workspaces.find(function (w) { return w.id === existing.id; }) : data.workspaces[0];
+                if (wsRef) wsRef.lastEventId = rec.id;
+              }
+              writeData(data);
+              result = { ok: true, saved: tabs.length, title: title, windows: winGroups.length, recordCreated: recordCreated };
+            }
           } else if (msg && msg.action === 'restoreGroup') {
             const d3 = readData();
             const g = (d3.groups || []).find(function (x) { return x.id === msg.groupId; });

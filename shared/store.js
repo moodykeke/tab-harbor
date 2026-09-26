@@ -202,6 +202,7 @@
       createdAt: Number(w.createdAt) || Date.now(),
       lastRestoredAt: Number(w.lastRestoredAt) || 0,
       lastEventId: (w.lastEventId && typeof w.lastEventId === 'string') ? w.lastEventId : undefined,
+      autoUpdate: !!w.autoUpdate, // 2.1a:用户在冲突可见后选了"更新它"→ 记住,此后同名收工零提示
       tabs: flat,                 // 扁平镜像(计数/导出/删除用)
       windows: windows && windows.length > 1 ? windows : undefined, // 多窗口结构(单窗口不落盘)
     };

@@ -152,17 +152,78 @@
       wsRow.hidden = !wsRow.hidden;
       if (!wsRow.hidden) $('#wsName').focus();
     });
+
+    // 2.1a:同名冲突可见 —— 输入即显示"将被覆盖的是什么",选择经 remember 记住
+    let ppWsChoice = null; // null | { mode:'update', id, remember } | { mode:'new' }
+    const renderPpConflict = () => {
+      const box = $('#ppWsConflict');
+      const title = $('#wsName').value.trim();
+      const matches = title ? data.workspaces.filter((w) => w.title === title) : [];
+      ppWsChoice = null;
+      box.textContent = '';
+      if (!matches.length) { box.hidden = true; return; }
+      box.hidden = false;
+      const mk = (choice, label, on) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ws-conflict__btn' + (on ? ' ws-conflict__btn--on' : '');
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          ppWsChoice = choice;
+          box.querySelectorAll('button').forEach((x) => x.classList.remove('ws-conflict__btn--on'));
+          b.classList.add('ws-conflict__btn--on');
+        });
+        return b;
+      };
+      const row = document.createElement('div');
+      row.className = 'ws-conflict__row';
+      if (matches.length === 1) {
+        const w = matches[0];
+        const line = document.createElement('div');
+        line.className = 'ws-conflict__line';
+        line.textContent = tr('同名工作区:{n} 个标签 · 收于 {when}',
+          { n: w.tabs.length, when: new Date(w.createdAt || Date.now()).toLocaleDateString() });
+        box.appendChild(line);
+        row.appendChild(mk({ mode: 'update', id: w.id, remember: true }, tr('更新它'), true));
+        ppWsChoice = { mode: 'update', id: w.id, remember: true };
+      } else {
+        const line = document.createElement('div');
+        line.className = 'ws-conflict__line';
+        line.textContent = tr('有 {n} 个同名工作区:', { n: matches.length });
+        box.appendChild(line);
+        matches.forEach((w) => {
+          row.appendChild(mk({ mode: 'update', id: w.id, remember: true },
+            tr('更新它') + ' · ' + w.tabs.length, false));
+        });
+      }
+      row.appendChild(mk({ mode: 'new' }, tr('新建一个'), false));
+      box.appendChild(row);
+    };
+    $('#wsName').addEventListener('input', renderPpConflict);
+
     const clockOut = async () => {
-      const res = await send({
-        action: 'saveWorkspace',
-        title: $('#wsName').value,
-        closeTabs: true,
-      });
+      const payload = { action: 'saveWorkspace', title: $('#wsName').value, closeTabs: true };
+      const box = $('#ppWsConflict');
+      if (!box.hidden) {
+        if (!ppWsChoice) { toast(tr('请先选择:更新同名工作区,或新建一个'), true); return; }
+        if (ppWsChoice.mode === 'update') {
+          payload.updateMode = 'update';
+          payload.updateId = ppWsChoice.id;
+          payload.remember = !!ppWsChoice.remember;
+        } else {
+          payload.updateMode = 'new';
+        }
+      }
+      const res = await send(payload);
       if (res && res.ok) {
         toast(tr('已收工:{n} 个标签入「{name}」', { n: res.saved, name: res.title }));
         setTimeout(() => window.close(), 900);
       } else if (res && res.reason === 'empty') {
         toast(tr('当前窗口没有可保存的标签'), true);
+      } else if (res && (res.reason === 'name-conflict' || res.reason === 'name-ambiguous')) {
+        data = await BGTStore.load();
+        renderPpConflict();
+        toast(tr('检测到同名工作区,请选择:更新它,或新建一个'), true);
       } else {
         toast(tr('收工失败:') + (res && res.reason ? res.reason : tr('后台服务不可用')), true);
       }

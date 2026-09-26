@@ -257,8 +257,8 @@ test('同名覆盖且记录去重命中:lastEventId 保留、seenCount 不虚高
   await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
   const ev1 = env.data().workspaces[0].lastEventId;
   assert.ok(ev1, '首次收工应有 lastEventId');
-  // 第二次同名 + 内容完全相同 → recordEqualsLast 命中,不新建记录
-  const r2 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  // 第二次同名(2.1a 语义下显式选更新)+ 内容完全相同 → recordEqualsLast 命中,不新建记录
+  const r2 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false, updateMode: 'update' });
   assert.strictEqual(r2.ok, true);
   const d2 = env.data();
   assert.strictEqual(d2.workspaces.length, 1);
@@ -274,11 +274,50 @@ test('同名覆盖保留 lastRestoredAt(卡片"开工于…"不因再次收工�
     id: 'w1', title: '项目A', tabs: [{ url: 'https://a.com/', savedAt: 1 }], lastRestoredAt: 555,
   })];
   const env = createEnv({ windows: [W1([T(11, 'https://a.com/')])], storage: { bgtData: data } });
-  const res = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  const res = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false, updateMode: 'update' });
   assert.strictEqual(res.ok, true);
   const d = env.data();
   assert.strictEqual(d.workspaces[0].id, 'w1', '同名应是更新而非新建');
   assert.strictEqual(d.workspaces[0].lastRestoredAt, 555, 'lastRestoredAt 不得被 normalize 全量铺重置为 0');
+});
+
+test('2.1a 同名冲突可见:未指明模式且未记住 → 拒绝并返回冲突信息,不落盘', async () => {
+  const env = createEnv({ windows: [W1([T(11, 'https://a.com/')])], storage: { bgtData: EMPTY() } });
+  await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  const before = env.data().workspaces[0].tabs.length;
+  const setsBefore = env.callsOf('storage.local.set').length;
+  const r2 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  assert.strictEqual(r2.ok, false);
+  assert.strictEqual(r2.reason, 'name-conflict');
+  assert.strictEqual(r2.conflict.tabs, before, '冲突信息必须带"将被覆盖的是什么"');
+  assert.strictEqual(env.callsOf('storage.local.set').length, setsBefore, '冲突未决不得有任何写');
+});
+
+test('2.1a 选「更新它」并记住 → autoUpdate 置位,此后同名收工零提示(每天重复路径)', async () => {
+  const env = createEnv({ windows: [W1([T(11, 'https://a.com/')])], storage: { bgtData: EMPTY() } });
+  await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  const r2 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false, updateMode: 'update', remember: true });
+  assert.strictEqual(r2.ok, true);
+  assert.strictEqual(env.data().workspaces[0].autoUpdate, true, '用户的选择要被记住');
+  const r3 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  assert.strictEqual(r3.ok, true, '记住后同名收工零提示直接更新');
+  assert.strictEqual(env.data().workspaces.length, 1);
+});
+
+test('2.1a 「新建一个」→ 允许重名;N>1 时列候选,updateId 指名更新', async () => {
+  const env = createEnv({ windows: [W1([T(11, 'https://a.com/')])], storage: { bgtData: EMPTY() } });
+  await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  const r2 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false, updateMode: 'new' });
+  assert.strictEqual(r2.ok, true);
+  assert.strictEqual(env.data().workspaces.length, 2, '允许重名:身份交给稳定 ID,名字只是显示名');
+  const r3 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  assert.strictEqual(r3.ok, false);
+  assert.strictEqual(r3.reason, 'name-ambiguous');
+  assert.strictEqual(r3.candidates.length, 2, '列出候选让用户指名');
+  const target = env.data().workspaces[1].id;
+  const r4 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false, updateMode: 'update', updateId: target });
+  assert.strictEqual(r4.ok, true, '指名更新应成功');
+  assert.strictEqual(env.data().workspaces.length, 2, '指名更新不新建');
 });
 
 test('harness:setData 在首次 persist 之后仍然生效(写 v3 分键,不被读路径忽略)', async () => {

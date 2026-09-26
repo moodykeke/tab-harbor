@@ -69,7 +69,7 @@
   可勾选**包含全部窗口**(多显示器每窗一条,`windows[]` 结构)
 - **开工**:一键在新窗口恢复(多窗口工作区**逐窗口还原**),或扁平合并进当前窗口 / 替换当前窗口;
   固定标签原样保留
-- 同名收工自动覆盖更新,适合每天重复;支持重命名、删除(可撤销)、导出为分组备份;
+- 同名收工**先询问**(对话框实时显示将被覆盖的内容):「更新它」会记住、此后零提示(每天重复无摩擦),或「新建一个」(允许重名,身份独立);支持重命名、删除(可撤销)、导出为分组备份;
   多窗口卡片按"窗口 1/2…"分组展示,删除标签双结构同步
 - 管理页顶部「分组 / 工作区」视图切换,`Ctrl+K` 可直达开工
 
@@ -160,7 +160,7 @@ better-group-tabs/
 │   └── helpers/sw-env.js  #   内存版 chrome.* 与消息投递
 ├── tools/
 │   ├── pack.js            # 可复现打包(零依赖 ZIP 写入器 + 白名单 + SHA-256)
-│   ├── test-all.js        # 发布门禁:7 套 120 项断言
+│   ├── test-all.js        # 发布门禁:7 套 123 项断言
 │   ├── check-globals.js   # 静态门禁:未声明标识符
 │   ├── make-screenshots.js # 生成商店截图(无头 Chrome + CDP)
 │   └── patches/           # 历史补丁脚本存档(只读,勿运行 —— 见该目录 README)
@@ -180,7 +180,7 @@ better-group-tabs/
   - `test/perf.js`(10 项)性能基准,相对基线 ×3 容差 + 轮转测量抗抖动
   - `test/i18n.js`(5 项)翻译完整性穷尽检查:tr 键 + HTML 文本节点/title/placeholder + 白名单
   - `test/integration.js`(9 项)真实链路:备份信任链 / 恢复事务 / 事件去重 / 智能去重端到端
-  - `test/sw-routes.js`(34 项)**Service Worker 运行时**:在 vm 中真实加载 background.js,
+  - `test/sw-routes.js`(37 项)**Service Worker 运行时**:在 vm 中真实加载 background.js,
     驱动全部消息路由与事件监听器(多窗口收工 / replace 开工 / 泊位建议 / 云端信封与篡改阻断 / 快照 / 菜单 / 徽章 / 设置补丁 / 摘录)
   - `test/seams.js`(8 项)静态契约:UI→SW 路由一致性、mock↔生产路由镜像、三个页面的 DOM id 契约
 - 打包:`node tools/pack.js`(先跑门禁,再出商店包 + 审核包,并打印商店包 SHA-256)

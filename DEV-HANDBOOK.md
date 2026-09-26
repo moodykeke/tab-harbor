@@ -10,7 +10,7 @@
 ## 1. 十分钟上手
 
 ```bash
-# 全部门禁(7 套 120 项,任一失败非零退出)—— 提交前必跑
+# 全部门禁(7 套 123 项,任一失败非零退出)—— 提交前必跑
 node tools/test-all.js
 
 # 出包(先跑门禁,再出商店包 + 审核包,并打印 SHA-256)
@@ -68,7 +68,7 @@ node tools/make-screenshots.js
 
 以下全部是实测值,不是估计。改动后如果这些数字显著漂移,那本身就是要解释的事。
 
-### 门禁:7 套 120 项
+### 门禁:7 套 123 项
 
 | 套件 | 项数 | 覆盖层 |
 | --- | --- | --- |
@@ -77,7 +77,7 @@ node tools/make-screenshots.js
 | `test/perf.js` | 10 | 性能(相对基线;含"指纹未中强制重建"防掩盖项) |
 | `test/i18n.js` | 5 | 翻译完整性 |
 | `test/integration.js` | 9 | 真实链路 |
-| `test/sw-routes.js` | 34 | **接线层:真实加载 `background.js`** |
+| `test/sw-routes.js` | 37 | **接线层:真实加载 `background.js`** |
 | `test/seams.js` | 8 | 静态契约:UI→SW / mock↔生产 / DOM id |
 
 ### 性能基线(`test/perf-baseline.json`,容差 3×;2026-09-27 机器状态漂移后按规程重记)
@@ -185,7 +185,7 @@ node tools/make-screenshots.js
 
 > **进度(勾选式,随落地更新)**:Wave 1 全部 ✅(1.1/1.2/1.3/1.4)· Wave 3.1 ✅ · 3.2 ✅ · 决策 1/2/4 ✅ · 同名覆盖语义 ✅(2026-09-27)
 > ⏸ Wave 0.1/0.2 待人(真机验证/隐私政策 URL/发布者信息/促销图)—— 上架唯一硬阻塞。
-> 进行中:WP-2.1a。未动:2.1b、WP-2.2~2.4、WP-3.3~3.5、Wave 4(前置决策 3 ⏳)、Wave 5。
+> WP-2.1a ✅(v3.13.0)。未动:2.1b、WP-2.2~2.4、WP-3.3~3.5、Wave 4(前置决策 3 ⏳)、Wave 5。
 
 
 规模:S ≈ 半天内 / M ≈ 1–3 天 / L ≈ 一周级(单人,含测试与文档)。
@@ -288,7 +288,7 @@ node tools/make-screenshots.js
 
 ### 一个 WP 算"做完"的条件
 
-1. `node tools/test-all.js` **7 套 120 项全绿**(项数只会增)
+1. `node tools/test-all.js` **7 套 123 项全绿**(项数只会增)
 2. 行为改动**带一个能证伪的断言**,并通过**变异验证**:把实现改回旧写法,断言必须变红
 3. 新增 SW 路由已登记进 `test/seams.js` 的 `SW_CONTRACT`
 4. 新增 `tr('…')` 键已在 `shared/i18n.js` 的 `EN` 表里(用**单引号**,`test/i18n.js` 是文本扫描不是解析);HTML 静态中文同理

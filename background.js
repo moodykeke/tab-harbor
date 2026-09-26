@@ -203,11 +203,32 @@ async function saveWorkspace(title, opts) {
 
   const tabs = winGroups.reduce((acc, g) => acc.concat(g.tabs), []);
   title = (title || '').trim() || defaultGroupTitle();
-  const existing = data.workspaces.find((w) => w.title === title);
+  // 2.1a(决策 2026-09-27):同名从"身份"降级为"可见的绑定建议"——
+  // 身份交给稳定 ID,名字是非唯一显示名(允许重名);默认仍是更新,但冲突必须先对用户
+  // 可见(显示将被覆盖的是什么),选择经 autoUpdate 记住
+  const mode = (opts && opts.updateMode) || ''; // ''(未指明,由 autoUpdate 决定) | 'update' | 'new'
+  const updateId = (opts && opts.updateId) || '';
+  const remember = !!(opts && opts.remember);
+  const matches = data.workspaces.filter((w) => w.title === title);
   const payload = {
     title, createdAt: now, tabs,
     windows: winGroups.length > 1 ? winGroups : undefined,
   };
+  const brief = (w) => ({ id: w.id, title: w.title, tabs: w.tabs.length, savedAt: w.createdAt, autoUpdate: !!w.autoUpdate });
+  let existing = null;
+  if (mode === 'update') {
+    existing = (updateId && matches.find((w) => w.id === updateId)) || (matches.length === 1 ? matches[0] : null);
+    if (!existing) return { ok: false, reason: 'name-ambiguous', candidates: matches.map(brief) };
+  } else if (mode !== 'new' && matches.length) {
+    const autos = matches.filter((w) => w.autoUpdate);
+    if (autos.length === 1) {
+      existing = autos[0]; // "每天重复收工":用户看过冲突并选了更新 → 零提示直接更新
+    } else if (matches.length === 1) {
+      return { ok: false, reason: 'name-conflict', conflict: brief(matches[0]) };
+    } else {
+      return { ok: false, reason: 'name-ambiguous', candidates: matches.map(brief) };
+    }
+  }
   let wsId;
   if (existing) {
     // 覆盖更新只刷新"本次收工应收割的字段",不得全量铺:
@@ -221,6 +242,7 @@ async function saveWorkspace(title, opts) {
     existing.createdAt = now; // 覆盖更新,视为最新一次收工
     existing.lastEventId = keepEventId;        // 若本次新建了记录,下方 wsRef 回填会覆盖为最新 rec.id
     existing.lastRestoredAt = keepRestoredAt;
+    if (remember) existing.autoUpdate = true;  // 用户看过"将被覆盖的是什么"仍选更新 → 以后不再问
     wsId = existing.id;
   } else {
     const wsObj = BGTStore.normalizeWorkspace(payload);
@@ -676,7 +698,11 @@ async function handleMessage(msg) {
       }
       case 'saveWorkspace':
         // allWindows 必须透传:漏传会让"包含全部窗口"静默失效(仅存聚焦窗口)
-        return await saveWorkspace(msg.title, { closeTabs: msg.closeTabs !== false, allWindows: !!msg.allWindows });
+        // 2.1a:updateMode/updateId/remember 同样必须透传 —— "路由漏传参数"在本项目有过先例
+        return await saveWorkspace(msg.title, {
+          closeTabs: msg.closeTabs !== false, allWindows: !!msg.allWindows,
+          updateMode: msg.updateMode, updateId: msg.updateId, remember: !!msg.remember,
+        });
       case 'restoreWorkspace':
         return await restoreWorkspace(msg.workspaceId, msg.mode || 'new');
       case 'renameGroup':
