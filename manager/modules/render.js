@@ -350,18 +350,33 @@ function buildCard(v, q, urlIndex, berths) {
 function buildTabRow(t, hueVal, gid, urlIndex) {
   const [fav, avatar] = faviconPair(t, hueVal);
 
-  // 重复保存徽章:同一网址存过多组时显示 ×N,点击查看每次日期并跳转
+  // 重复保存徽章:同一网址存过多组时显示 ×N,点击查看每次日期并跳转。
+  // WP-3.3:标题有多个版本(噪声折叠后)时,×N 升级为「谱系条」—— 每版一枚按序着色的刻点
   const identity = urlIndex ? BGTStore.lookupIndex(urlIndex, t.url) : null;
   const dupCount = identity ? identity.seenCount : 0;
   const refs = identity ? identity.occurrences : [];
   let dupBadge = null;
   if (dupCount > 1) {
-    const tip = tr('已保存 {n} 次:', { n: dupCount }) +
-      refs.map((o) => tr('{date}({group})', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') })).join('、');
-    dupBadge = h('button', {
-      class: 'tab__dup', type: 'button', 'data-act': 'dup',
-      title: tip, text: '×' + dupCount,
-    });
+    const versions = BGTStore.sourceVersions(identity);
+    if (versions.length > 1) {
+      const tip = tr('该网址有 {n} 个版本:', { n: versions.length }) + '\n' +
+        versions.map((v, i) => 'v' + (i + 1) + ' · ' + v.title + ' · ' + fmtDate(v.firstAt) +
+          (v.count > 1 ? ' ×' + v.count : '')).join('\n');
+      dupBadge = h('button', {
+        class: 'tab__dup tab__dup--ver', type: 'button', 'data-act': 'dup',
+        title: tip,
+      }, h('span', {
+        class: 'tab__dup-dots',
+        html: versions.map((v, i) => '<i style="--h:' + (((i * 47) + 210) % 360) + '"></i>').join(''),
+      }));
+    } else {
+      const tip = tr('已保存 {n} 次:', { n: dupCount }) +
+        refs.map((o) => tr('{date}({group})', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') })).join('、');
+      dupBadge = h('button', {
+        class: 'tab__dup', type: 'button', 'data-act': 'dup',
+        title: tip, text: '×' + dupCount,
+      });
+    }
   }
 
   return h('li', { class: 'tab', draggable: 'true', 'data-id': t.id, 'data-group': gid },

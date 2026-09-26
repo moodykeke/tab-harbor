@@ -266,9 +266,13 @@ export function openDupMenu(contextGroup, tab, anchor) {
   const identity = BGTStore.lookupIndex(BGTStore.buildUrlIdentity(state.data), tab.url);
   const occurrences = identity.occurrences;
   if (identity.seenCount <= 1) { toast(tr('该网址只保存过 1 次')); return; }
+  // WP-3.3:多版本时给每条观测标注它属于第几版(与谱系条同一折叠口径)
+  const versions = BGTStore.sourceVersions(identity);
+  const verNo = new Map(versions.map((v, i) => [v.key, i + 1]));
+  const vTag = (o) => versions.length > 1 ? 'v' + (verNo.get(BGTStore.noiseFoldTitle(o.tabTitle) || '(空)') || '?') + ' · ' : '';
   openMenu(anchor, occurrences.map((o) => ({
-    label: o.source === 'excerpt' ? excerptOccurrenceLabel(o)
-      : tr('{date} · {group}', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') }),
+    label: o.source === 'excerpt' ? vTag(o) + excerptOccurrenceLabel(o)
+      : vTag(o) + tr('{date} · {group}', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') }),
     icon: (contextGroup && o.source === 'group' && o.refId === contextGroup.id) ? ICONS.check
       : o.source === 'group' ? ICONS.tabs
       : o.source === 'record' ? ICONS.list
@@ -337,19 +341,23 @@ export function openDupDialog() {
   for (const entry of dups) {
     const occ = entry.occurrences;
     const latest = occ[occ.length - 1];
+    // WP-3.3:多版本条目按版本分组渲染 —— 每版一行摘要 + 该版的观测 chips
+    const versions = BGTStore.sourceVersions(entry);
+    const verNo = new Map(versions.map((v, i) => [v.key, i + 1]));
     const row = h('div', { class: 'dup-row' });
     const top = h('div', { class: 'dup-row__top' },
       h('span', { class: 'tab__avatar', text: firstChar(latest.tabTitle), style: `--h:${hueOf(entry.key)}` }),
       h('span', { class: 'dup-row__title', text: latest.tabTitle, title: entry.key }),
-      h('span', { class: 'dup-row__count', text: '×' + occ.length }),
+      h('span', { class: 'dup-row__count', text: versions.length > 1 ? 'v' + versions.length : '×' + occ.length }),
     );
     row.appendChild(top);
     const chips = h('div', { class: 'dup-row__chips' });
     for (const o of occ.slice(-12)) {
-      const label = o.source === 'group' ? tr('{date} · {group}', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') })
-        : o.source === 'record' ? tr('{date} · 记录', { date: fmtDate(o.at) })
-        : o.source === 'excerpt' ? tr('{date} · 摘录', { date: fmtDate(o.at) })
-        : tr('{date} · 工作区', { date: fmtDate(o.at) });
+      const vTag = versions.length > 1 ? 'v' + (verNo.get(BGTStore.noiseFoldTitle(o.tabTitle) || '(空)') || '?') + ' · ' : '';
+      const label = o.source === 'group' ? vTag + tr('{date} · {group}', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') })
+        : o.source === 'record' ? vTag + tr('{date} · 记录', { date: fmtDate(o.at) })
+        : o.source === 'excerpt' ? vTag + tr('{date} · 摘录', { date: fmtDate(o.at) })
+        : vTag + tr('{date} · 工作区', { date: fmtDate(o.at) });
       if (o.source === 'excerpt') {
         // 摘录没有可跳转的目的地:静态片段,悬停读快照(复制全文走 ×N 徽章菜单)
         chips.appendChild(h('span', { class: 'dup-chip dup-chip--static', title: o.tabTitle }, label));

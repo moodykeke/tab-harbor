@@ -825,3 +825,12 @@
 }
 
 .cloud__status--warn { color: #b7791f; }
+
+/* ---------------- WP-3.3:版本谱系条(×N 在多版本时升级为按版着色的刻点) ---------------- */
+.tab__dup--ver { padding: 1px 5px; }
+.tab__dup-dots { display: inline-flex; gap: 2px; align-items: center; }
+.tab__dup-dots i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: hsl(var(--h, 210), 72%, 55%);
+  display: inline-block;
+}

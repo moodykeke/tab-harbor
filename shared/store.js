@@ -778,6 +778,48 @@
     return m ? Number(m[1]) : null;
   }
 
+  /** WP-3.3:版本谱系 —— 标题观测按"噪声折叠标题"分组成版本,零新增采集。
+   *  折叠纪律与 classifyStability 同源((3)/日期/时间是噪声不是版本)。
+   *  摘录是内容型观测(tabTitle 是片段而非页面标题):不参与标题分组,
+   *  按"采集时刻正在生效的版本"挂载(首个 firstAt ≤ at 的最新版本)。
+   *  每版:{ key, title(该版最近一次原始标题), count, firstAt, lastAt, sources[] },
+   *  按 firstAt 升序(v1 在前);标题观测的归属用 noiseFoldTitle(o.tabTitle) 对 key 查。 */
+  function sourceVersions(entry) {
+    const occ = (entry && Array.isArray(entry.occurrences)) ? entry.occurrences : [];
+    const byKey = new Map();
+    const passthrough = [];
+    for (const o of occ) {
+      if (o.source === 'excerpt') { passthrough.push(o); continue; }
+      const k = noiseFoldTitle(o.tabTitle) || '(空)';
+      let v = byKey.get(k);
+      if (!v) {
+        v = { key: k, title: String(o.tabTitle || ''), count: 0, firstAt: o.at, lastAt: o.at, sources: [] };
+        byKey.set(k, v);
+      }
+      v.count += 1;
+      v.firstAt = Math.min(v.firstAt, o.at);
+      v.lastAt = Math.max(v.lastAt, o.at);
+      if (o.tabTitle) v.title = String(o.tabTitle);
+      if (v.sources.indexOf(o.source) < 0) v.sources.push(o.source);
+    }
+    const versions = Array.from(byKey.values()).sort((a, b) => a.firstAt - b.firstAt);
+    if (!versions.length && passthrough.length) {
+      // 只有摘录观测的网址:单一"版本",标题用首条片段,不做谱系切分
+      versions.push({ key: '(excerpt-only)', title: String(passthrough[0].tabTitle || ''), count: 0,
+        firstAt: passthrough[0].at, lastAt: passthrough[0].at, sources: [] });
+    }
+    for (const o of passthrough) {
+      let target = versions[0];
+      for (const v of versions) if (v.firstAt <= o.at) target = v;
+      if (target) {
+        target.count += 1;
+        target.lastAt = Math.max(target.lastAt, o.at);
+        if (target.sources.indexOf(o.source) < 0) target.sources.push(o.source);
+      }
+    }
+    return versions;
+  }
+
   function classifyStability(entry) {
     const occ = (entry && Array.isArray(entry.occurrences)) ? entry.occurrences : [];
     const obsCount = occ.length;
@@ -1220,6 +1262,8 @@
     buildUrlIdentity: buildUrlIdentity,
     lookupIndex: lookupIndex,
     classifyStability: classifyStability,
+    sourceVersions: sourceVersions,
+    noiseFoldTitle: noiseFoldTitle, // UI 侧把 occurrence 归入版本时使用(与索引/分类器同一折叠纪律)
     normalizeUrl: normalizeUrl,
     URL_CACHE_MAX: URL_CACHE_MAX,
     urlCacheHas: function (u) { return urlCache.has(u); }, // 仅供门禁观测 LRU 淘汰行为(决策 4 断言)

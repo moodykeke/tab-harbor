@@ -772,6 +772,43 @@ test('3.2 分类器:标题乱跳 → dynamic(变化率按噪声折叠后口径);
   assert.strictEqual(c.verdict, 'stable');
 });
 
+/* ---- WP-3.3:版本谱系(sourceVersions,零新增采集) ---- */
+
+test('3.3 sourceVersions:按噪声折叠分组、按首次观测排序、每版聚合正确', () => {
+  const data = BGTStore.emptyData();
+  data.records = [
+    BGTStore.makeRecord({ id: 'r1', title: '记1', createdAt: 100, tabs: [{ url: 'https://a.com/x', title: '设计稿 v1 (2)', savedAt: 100 }] }),
+    BGTStore.makeRecord({ id: 'r2', title: '记2', createdAt: 200, tabs: [{ url: 'https://a.com/x', title: '设计稿 v1 (5)', savedAt: 200 }] }),
+    BGTStore.makeRecord({ id: 'r3', title: '记3', createdAt: 300, tabs: [{ url: 'https://a.com/x', title: '设计稿 v2', savedAt: 300 }] }),
+  ];
+  data.excerpts = [
+    BGTStore.normalizeExcerpt({ id: 'e1', url: 'https://a.com/x', text: 'v1 时期的摘录', savedAt: 150 }),
+    BGTStore.normalizeExcerpt({ id: 'e2', url: 'https://a.com/x', text: 'v2 时期的摘录', savedAt: 350 }),
+  ];
+  const entry = BGTStore.lookupIndex(BGTStore.buildUrlIdentity(data), 'https://a.com/x');
+  const vs = BGTStore.sourceVersions(entry);
+  assert.strictEqual(vs.length, 2, 'v1 组(含计数噪声)与 v2 组共两版;摘录不另立版本');
+  assert.strictEqual(vs[0].title.includes('v1'), true, '第一版标题保留原始形态');
+  assert.strictEqual(vs[0].count, 3, '两条标题观测((N) 折叠)+ 时刻落在 v1 的摘录,共 3');
+  assert.strictEqual(vs[0].firstAt, 100);
+  assert.strictEqual(vs[1].firstAt, 300, '按首次观测升序,v2 在后');
+  assert.strictEqual(vs[1].count, 2, 'v2 的一条记录 + 时刻落在 v2 的摘录');
+  assert.ok(vs[1].sources.indexOf('excerpt') >= 0, '来源聚合包含摘录');
+  // occurrence 归属口径:与分类器同一折叠
+  assert.strictEqual(BGTStore.noiseFoldTitle('设计稿 v1 (改)') === BGTStore.noiseFoldTitle('设计稿 v1'), false,
+    '(改) 与 v1 的关系按折叠键判断(此断言锚定导出口径存在,不预设折叠结果)');
+});
+
+test('3.3 sourceVersions:单版本(纯噪声差异)不产生假谱系', () => {
+  const data = BGTStore.emptyData();
+  data.records = [1, 2, 3].map((i) => BGTStore.makeRecord({
+    id: 'r' + i, title: '记' + i, createdAt: 100 * i,
+    tabs: [{ url: 'https://a.com/inbox', title: '收件箱 (' + (i * 4) + ')', savedAt: 100 * i }],
+  }));
+  const entry = BGTStore.lookupIndex(BGTStore.buildUrlIdentity(data), 'https://a.com/inbox');
+  assert.strictEqual(BGTStore.sourceVersions(entry).length, 1, '(N) 计数差异折叠为一版');
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

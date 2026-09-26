@@ -167,6 +167,7 @@
   '把选中文字存为摘录': 'Save selection as excerpt',
   '{date} · 摘录': '{date} · Excerpt',
   '{date} · 摘录 · {project}': '{date} · Excerpt · {project}',
+  '该网址有 {n} 个版本:': 'This URL has {n} versions:',
   '已复制摘录全文': 'Excerpt text copied',
   '复制失败': 'Copy failed',
   '未授予对该服务器的访问权限': 'Permission for this server was not granted',
