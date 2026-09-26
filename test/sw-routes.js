@@ -203,6 +203,36 @@ test('renameGroup / renameWorkspace 真正落盘', async () => {
   assert.strictEqual(env.data().workspaces[0].title, '新区');
 });
 
+test('saveSettings:补丁落 SW 新鲜状态且只写 meta —— 并发分组写入不丢(决策 2)', async () => {
+  // 直接以 v3 分键布局播种,避免迁移写混入 set 调用记录
+  const g1 = BGTStore.normalizeGroup({ id: 'g1', title: '旧组', tabs: [{ url: 'https://a.com/' }] });
+  const env = createEnv({
+    windows: [W1([])],
+    storage: {
+      bgtMeta: { schemaVersion: BGTStore.STORAGE_SCHEMA, settings: {}, updatedAt: 1 },
+      bgtGroups: [g1],
+      bgtWorkspaces: [],
+      bgtRecords: [],
+    },
+  });
+  // 模拟并发:调用方读快照之后,另一上下文(如 Alt+S)又存了一个分组
+  const g2 = BGTStore.normalizeGroup({ id: 'g2', title: '并发组', tabs: [{ url: 'https://b.com/' }] });
+  await env.chrome.storage.local.set({ bgtGroups: [g1, g2] });
+
+  const res = await env.send({ action: 'saveSettings', patch: { excludePinned: true, theme: 'dark', evilKey: 'x' } });
+  assert.strictEqual(res.ok, true);
+  const d = env.data();
+  assert.strictEqual(d.settings.excludePinned, true);
+  assert.strictEqual(d.settings.theme, 'dark');
+  assert.strictEqual('evilKey' in d.settings, false, '白名单外的键不得渗入 settings');
+  assert.strictEqual(d.groups.length, 2, '并发的 groups 写入必须存活(不得被调用方快照覆盖)');
+
+  // 写路径只碰 meta —— 这是"结构上不可能覆盖并发写"的保证
+  const metaSets = env.callsOf('storage.local.set').map((c) => c.args[0]).filter((ks) => ks.includes('bgtMeta'));
+  assert.ok(metaSets.length >= 1, '应产生一次含 meta 的写');
+  assert.deepStrictEqual(metaSets[metaSets.length - 1].slice().sort(), ['bgtMeta'], 'settings 补丁只允许写 bgtMeta');
+});
+
 test('renameGroup 对不存在的 id 返回 not-found', async () => {
   const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
   const res = await env.send({ action: 'renameGroup', groupId: 'nope', title: 'x' });

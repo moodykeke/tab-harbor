@@ -7,9 +7,9 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 
 ## [3.11.4] — 架构前置(Wave 1)
 
-> 主题:手册 Wave 1 全部落地:写入模型决策(ADR-001)+ 分键迁移 + CI 接线。
+> 主题:手册 Wave 1 全部落地:写入模型决策(ADR-001)+ 分键迁移 + Single Writer 收口 + CI 接线。
 > 用户可见变化:**无**。旧数据首次加载时自动迁移为分键布局(留底 `bgtData_v2_backup`,可回滚)。
-> 门禁 97 → **104 项**(项数只会增)。
+> 门禁 97 → **105 项**(项数只会增)。
 
 ### Decided(写入模型 · 手册决策 1 / WP-1.1)
 - **ADR-001:按集合分键存储**(`docs/ADR-001-write-model.md`)。实测依据:合成库
@@ -25,9 +25,15 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 - **分集合写**:`persist(data, collections)` 未被触的集合不进键集;SW 重命名路由、
   popup 设置开关已接上(改名只写 `bgtGroups`+`bgtMeta`);徽章/右键菜单听
   `bgtGroups`,manager/sidepanel 的回声令牌协议随 `bgtMeta.updatedAt`,零协议变化
+- **Single Writer 收口设置类写入(WP-1.2,决策 2)**:新增 SW 补丁路由 `saveSettings`
+  (永远 load 新鲜状态、只写 `bgtMeta`、键按 `DEFAULT_SETTINGS` 白名单过滤,已登记
+  `SW_CONTRACT`);popup 两个选项与设置对话框全部改走补丁,**快照整包覆盖在该路径
+  上结构性消失**。可证伪断言:并发写入的分组必须存活 + 补丁写只允许落 `bgtMeta`
+  (变异验证:路由改回整包写 → 断言红)。残余风险(manager 列表级编辑仍为页面内写,
+  靠 `onChanged` 令牌刷新缓解)已写入手册决策 2,后续按需渐进收口
 - **mock 存储层同口径修复**(规矩 10):`mock-chrome.js` 的 `set()` 此前只认
   `bgtData`、其余键**静默丢弃**(预览层潜伏偏差,ADR §2 发现)——已通用化,
-  `readData`/`writeData` 落分键槽位
+  `readData`/`writeData` 落分键槽位;`saveSettings` 路由同口径模拟
 
 ### Added(工程能力)
 - **CI 接线(WP-1.4)**:`.github/workflows/ci.yml` —— push/PR 跑 `node tools/test-all.js`。

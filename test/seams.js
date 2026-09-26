@@ -139,6 +139,7 @@ function mockActions() {
 const SW_CONTRACT = [
   'saveWindow', 'saveAllWindows', 'openManager', 'openSidePanel',
   'saveWorkspace', 'restoreWorkspace', 'renameGroup', 'renameWorkspace',
+  'saveSettings',
   'cloudTest', 'cloudBackupNow', 'cloudRestore', 'restoreGroup',
 ];
 

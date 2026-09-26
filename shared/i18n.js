@@ -163,6 +163,7 @@
   '连接失败(': 'Connection failed (',
   '备份失败(': 'Backup failed (',
   '恢复失败(': 'Restore failed (',
+  '保存云端配置失败': 'Failed to save cloud config',
   '未授予对该服务器的访问权限': 'Permission for this server was not granted',
   '未授予对该服务器的访问权限,云端备份不可用(其余设置已保存)': 'Permission for this server was not granted; cloud backup is disabled (other settings saved)',
   '本地存储 {size} · {g} 个分组 · {w} 个工作区 · {b} 份每日备份(上限 7)': 'Local storage {size} · {g} groups · {w} workspaces · {b} daily backups (max 7)',

@@ -670,6 +670,21 @@ async function handleMessage(msg) {
           await BGTStore.persist(data, { workspaces: true });
           return { ok: true, title: ws.title };
         });
+      case 'saveSettings':
+        // Single Writer(手册决策 2):设置类写入收口为 SW 补丁 —— 永远 load 新鲜状态、
+        // 只写 meta。调用方(popup/设置页)不再持快照整包覆盖,与并发保存相遇时
+        // 不可能再丢更新;补丁键按 DEFAULT_SETTINGS 白名单过滤
+        return await BGTStore.mutate(async () => {
+          const data = await BGTStore.load();
+          const patch = (msg && msg.patch) || {};
+          const clean = {};
+          for (const k of Object.keys(patch)) {
+            if (k in BGTStore.DEFAULT_SETTINGS) clean[k] = patch[k];
+          }
+          data.settings = Object.assign(data.settings, clean);
+          await BGTStore.persist(data, {});
+          return { ok: true, settings: data.settings };
+        });
       case 'cloudTest':
         return await cloudTest(await (await BGTStore.load()).settings);
       case 'cloudBackupNow': {

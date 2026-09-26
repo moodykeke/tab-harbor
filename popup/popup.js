@@ -133,13 +133,13 @@
     // 保存选项(与设置中的 excludePinned / excludeActive 同步持久化)
     $('#optPinned').checked = !!data.settings.excludePinned;
     $('#optActive').checked = !!data.settings.excludeActive;
-    $('#optPinned').addEventListener('change', async (e) => {
-      data.settings.excludePinned = e.target.checked;
-      await BGTStore.persist(data, { settings: true }); // 只落 meta(ADR-001):settings-only 写不重写任何集合
+    $('#optPinned').addEventListener('change', (e) => {
+      data.settings.excludePinned = e.target.checked; // 乐观本地态;落盘走 SW 补丁,不再持快照整包覆盖(决策 2)
+      send({ action: 'saveSettings', patch: { excludePinned: e.target.checked } });
     });
-    $('#optActive').addEventListener('change', async (e) => {
+    $('#optActive').addEventListener('change', (e) => {
       data.settings.excludeActive = e.target.checked;
-      await BGTStore.persist(data, { settings: true });
+      send({ action: 'saveSettings', patch: { excludeActive: e.target.checked } });
     });
 
     // 菜单动作

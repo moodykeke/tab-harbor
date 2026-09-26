@@ -10,7 +10,7 @@
 ## 1. 十分钟上手
 
 ```bash
-# 全部门禁(7 套 104 项,任一失败非零退出)—— 提交前必跑
+# 全部门禁(7 套 105 项,任一失败非零退出)—— 提交前必跑
 node tools/test-all.js
 
 # 出包(先跑门禁,再出商店包 + 审核包,并打印 SHA-256)
@@ -68,7 +68,7 @@ node tools/make-screenshots.js
 
 以下全部是实测值,不是估计。改动后如果这些数字显著漂移,那本身就是要解释的事。
 
-### 门禁:7 套 104 项
+### 门禁:7 套 105 项
 
 | 套件 | 项数 | 覆盖层 |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ node tools/make-screenshots.js
 ### 包与产物
 
 - 商店包:31 项 / 113.8 KB(v3.11.3 基线值,SHA-256 `94b2f5e6…`),manifest 在根,**确定性的**(同源码多次打包哈希一致;版本或代码推进后以当次 `pack.js` 输出与 `BUILD-INFO.txt` 为准)
-- 审核包:内嵌商店包 + `BUILD-INFO.txt` + `TEST-REPORT.txt` + 全部文档/测试/工具。**项数与大小随文档集变动,以当次 `pack.js` 输出为准**(2026-09-26 实测 75 项 / 约 766 KB)
+- 审核包:内嵌商店包 + `BUILD-INFO.txt` + `TEST-REPORT.txt` + 全部文档/测试/工具。**项数与大小随文档集变动,以当次 `pack.js` 输出为准**(2026-09-26 实测 75 项 / 0.75 MB 量级)
 - `minimum_chrome_version: 116`(`sidePanel.open()` 的真实下限,已对照 Chrome 官方参考核实)
 
 ### 已验证的性能机制
@@ -142,6 +142,13 @@ node tools/make-screenshots.js
 **产出物**:一份 ADR(决策记录),写清选项、代价、被否决的理由。**这是本手册唯一要求"先出文档"的事。**
 
 ### 决策 2:Single Writer 是否收口到底
+
+> **状态(2026-09-26):设置类写入已收口(WP-1.2)。** popup 与设置对话框的落盘全部走 SW
+> 补丁路由 `saveSettings`(SW 端永远 load 新鲜状态、只写 `bgtMeta`、键白名单过滤),
+> 快照整包覆盖在这条路径上已结构性消失,并有可证伪断言看守。**残余风险已评估并接受**:
+> manager 的列表级编辑仍是页面内写(靠 `onChanged` 令牌刷新 + 防抖缓解,窗口期内与
+> 外部写并发仍可能丢更新)—— 后续按需以列表级 SW 端点渐进收口,`renameGroup`/
+> `renameWorkspace` 即先例。
 
 **现状**:只有 `renameGroup` / `renameWorkspace` 走 SW 串行队列。popup 与设置页仍用**自己早先读到的快照整包覆盖**,与并发保存相遇时**会静默丢更新**。
 
@@ -260,7 +267,7 @@ node tools/make-screenshots.js
 
 ### 一个 WP 算"做完"的条件
 
-1. `node tools/test-all.js` **7 套 104 项全绿**(项数只会增)
+1. `node tools/test-all.js` **7 套 105 项全绿**(项数只会增)
 2. 行为改动**带一个能证伪的断言**,并通过**变异验证**:把实现改回旧写法,断言必须变红
 3. 新增 SW 路由已登记进 `test/seams.js` 的 `SW_CONTRACT`
 4. 新增 `tr('…')` 键已在 `shared/i18n.js` 的 `EN` 表里(用**单引号**,`test/i18n.js` 是文本扫描不是解析);HTML 静态中文同理
@@ -268,6 +275,10 @@ node tools/make-screenshots.js
 6. `node tools/pack.js` 通过,商店包 SHA 记录在 `BUILD-INFO.txt`
 
 ### 变异验证怎么做(项目的标准动作)
+
+> **先提交,再变异。** 还原用 `git checkout -- <file>` 的前提是"好实现已在 commit 里";
+> 对未提交的工作区这么做会把新实现整个冲掉(2026-09-26 的真实教训)。未提交时的替代:
+> `cp <file> /tmp/<file>.bak` 备份后再改,验完 `cp` 回来。
 
 ```bash
 # 例:把 background.js 里新写的实现改回旧写法,跑对应套件,确认断言变红,然后还原

@@ -1,7 +1,7 @@
 /**
  * Tab Harbor — settings:设置对话框、云端备份操作、清空全部
  */
-import { state, $, send, persist, persistAndRender, snapshotGroups } from './core.js';
+import { state, $, send, persistAndRender, snapshotGroups } from './core.js';
 import { toast, offerUndo, confirmDialog } from './ui.js';
 import { renderBackups, renderSnapshots, renderStorageLine, verifyLatestBackup } from './actions.js';
 import { render } from './render.js';
@@ -86,16 +86,20 @@ async function ensureCloudPermission(url) {
 export async function saveSettings() {
   const cloud = readCloudForm();
   if (!cloud) return;
-  SET_FIELDS.forEach(([id, key]) => { state.data.settings[key] = $('#' + id).checked; });
-  state.data.settings.tidyRules = $('#setTidyRules').value;
+  const patch = {};
+  SET_FIELDS.forEach(([id, key]) => { patch[key] = $('#' + id).checked; });
+  patch.tidyRules = $('#setTidyRules').value;
   if (cloud.url) {
     const granted = await ensureCloudPermission(cloud.url);
     if (!granted) {
       cloudStatus('err', tr('未授予对该服务器的访问权限,云端备份不可用(其余设置已保存)'));
     }
   }
-  state.data.settings.webdav = cloud;
-  await persistAndRender();
+  patch.webdav = cloud;
+  // 决策 2:落盘走 SW 补丁(新鲜状态 + 只写 meta),本页快照不再有覆盖并发写的能力
+  const res = await send({ action: 'saveSettings', patch });
+  if (res && res.ok) state.data.settings = res.settings;
+  render();
   $('#settingsDialog').close();
   toast(tr('设置已保存'));
 }
@@ -107,10 +111,14 @@ export async function cloudAction(kind) {
     cloudStatus('err', tr('未授予对该服务器的访问权限'));
     return;
   }
-  // 先把表单配置存下再执行(后台读取 settings.webdav)
+  // 先把表单配置存下再执行(后台读取 settings.webdav)—— 同样走 SW 补丁
   const prev = state.data.settings.webdav;
-  state.data.settings.webdav = cloud;
-  await persist();
+  const saved = await send({ action: 'saveSettings', patch: { webdav: cloud } });
+  if (!saved || !saved.ok) {
+    cloudStatus('err', tr('保存云端配置失败'));
+    return;
+  }
+  state.data.settings = saved.settings;
   cloudStatus('busy', kind === 'test' ? tr('正在连接…') : kind === 'now' ? tr('正在上传备份…') : tr('正在下载备份…'));
   const action = kind === 'test' ? 'cloudTest' : kind === 'now' ? 'cloudBackupNow' : 'cloudRestore';
   const res = await send({ action });
@@ -126,8 +134,8 @@ export async function cloudAction(kind) {
       renderStorageLine();
     }
   } else {
+    await send({ action: 'saveSettings', patch: { webdav: prev } });
     state.data.settings.webdav = prev;
-    await persist();
     const reason = res && res.reason || 'no-response';
     cloudStatus('err', kind === 'test' ? tr('连接失败(') + reason + ')' :
       kind === 'now' ? tr('备份失败(') + reason + ')' : tr('恢复失败(') + reason + ')');

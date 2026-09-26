@@ -232,7 +232,17 @@
       sendMessage: function (msg, cb) {
         setTimeout(function () {
           let result = { ok: false, reason: 'mock' };
-          if (msg && msg.action === 'saveWindow' && typeof BGTStore !== 'undefined') {
+          if (msg && msg.action === 'saveSettings' && typeof BGTStore !== 'undefined') {
+            // 与生产同口径(决策 2):补丁合并到新鲜状态,白名单过滤,整包经 writeData 落分键
+            const data = readData() || BGTStore.emptyData();
+            const clean = {};
+            Object.keys(msg.patch || {}).forEach(function (k) {
+              if (k in BGTStore.DEFAULT_SETTINGS) clean[k] = msg.patch[k];
+            });
+            data.settings = Object.assign(data.settings, clean);
+            writeData(data);
+            result = { ok: true, settings: data.settings };
+          } else if (msg && msg.action === 'saveWindow' && typeof BGTStore !== 'undefined') {
             const data = readData();
             const group = BGTStore.buildGroup(mockWindowTabs, data.settings, { activeUrl: mockWindowTabs[0].url });
             if (group && Array.isArray(msg.__onlyNewKeys) && msg.__onlyNewKeys.length) {
