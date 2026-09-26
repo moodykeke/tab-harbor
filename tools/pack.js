@@ -52,6 +52,7 @@ const SHIP = [
 const REVIEW_EXTRA = [
   'README.md', 'ARCHITECTURE.md', 'CHANGELOG.md', '提交说明.md',
   'CHROMEWEBSTORE.md', 'PRIVACY.md', 'DEV-HANDBOOK.md',
+  'docs',
   'test', 'tools', 'store-assets',
 ];
 

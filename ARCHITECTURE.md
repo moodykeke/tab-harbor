@@ -255,6 +255,9 @@ JSON 载荷 0.79MB,单次落盘 = 2.9ms 全库归一化 + 35.2ms 序列化与克
 而 v3.12 的 Today 首页与 v4.0 的被动 checkpoint / Delta 历史,设计目标正是**成倍放大写频次与体量**。
 所以在动手做 checkpoint 之前必须先决定:
 
+> **决策(2026-09-26):已拍板 —— 选分键存储,含键结构与迁移方案,完整论证见
+> [`docs/ADR-001-write-model.md`](docs/ADR-001-write-model.md)。**
+
 1. **按集合分键存储**(`groups` / `workspaces` / `records` 各自独立 key)—— 重命名不再重写整库的 records;或
 2. **接受 blob 存储**,但规定写入预算与降级策略。
 

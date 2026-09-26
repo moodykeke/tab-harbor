@@ -98,8 +98,8 @@ node tools/make-screenshots.js
 
 ### 包与产物
 
-- 商店包:**31 项 / 113.8 KB**,SHA-256 `94b2f5e6…`,manifest 在根,**确定性的**(同源码多次打包哈希一致)
-- 审核包:73 项 / 740.1 KB,内嵌商店包 + `BUILD-INFO.txt` + `TEST-REPORT.txt`
+- 商店包:**31 项 / 113.8 KB**,SHA-256 `94b2f5e6…`,manifest 在根,**确定性的**(同源码多次打包哈希一致;商店包只含扩展本体,以下文档变更不影响其哈希)
+- 审核包:内嵌商店包 + `BUILD-INFO.txt` + `TEST-REPORT.txt` + 全部文档/测试/工具。**项数与大小随文档集变动,以当次 `pack.js` 输出为准**(2026-09-26 实测 75 项 / 约 760 KB)
 - `minimum_chrome_version: 116`(`sidePanel.open()` 的真实下限,已对照 Chrome 官方参考核实)
 
 ### 已验证的性能机制
@@ -128,6 +128,8 @@ node tools/make-screenshots.js
 ## 5. 待决决策(阻塞项,先开会再写码)
 
 ### 决策 1:写入模型(最高优先级,阻塞 v4.0 全部工作)
+
+> **状态(2026-09-26):已决策 —— 选 A(按集合分键),含键结构与迁移方案,见 [`docs/ADR-001-write-model.md`](docs/ADR-001-write-model.md)。** 负责人可否决,否决理由回写 ADR。以下保留为决策时的原始论证。
 
 **现状**:单 blob `bgtData` + 全量重写 + 多上下文各自整包覆盖。
 

@@ -5,6 +5,32 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 
 ---
 
+## [3.11.4-dev] — 架构前置(Wave 1)
+
+> 主题:手册 Wave 1 的"不新增用户可见功能"项。按 `DEV-HANDBOOK.md` §6 推进。
+> 本段在发布前会持续追加;已落条目均通过全部门禁。
+
+### Decided(写入模型 · 手册决策 1 / WP-1.1)
+- **ADR-001:按集合分键存储**(`docs/ADR-001-write-model.md`)。实测依据:合成库
+  (120 组/1440 标签/300 记录)中 records 占整包 **78.1%**(811KB/1039KB),而 manager
+  高频写(改名/置顶/拖拽)只动 groups —— 今天每笔都在白付 78% 的 records 税。
+  决策:`bgtMeta`/`bgtGroups`/`bgtWorkspaces`/`bgtRecords` 四键,跨集合写走单次
+  `set()` 保原子;迁移照抄 v1→v2 先例(留底 + 原子切换)。实现(迁移 WP)另行合入,
+  验收断言已写入 ADR §9
+- **发现并记录 mock 层既有偏差**:`shared/mock-chrome.js` 的 `storage.local.set()` 只认
+  `bgtData` 键,其余键静默丢弃(违反手册规矩 10 同口径)。修复列入迁移 WP,ADR §6.4
+
+### Added(工程能力)
+- **CI 接线(WP-1.4)**:`.github/workflows/ci.yml` —— push/PR 跑 `node tools/test-all.js`。
+  推上托管平台前 dormant。perf 相对基线机制与"不要在 CI 机器上重记基线"写入文件注释
+- **审核包纳入 `docs/` 目录**(决策记录随审核包分发,今后 ADR 增补无需改 pack 清单)
+
+### Fixed(文档与代码对齐 · 手册规矩 6)
+- **手册 §3 审核包数字失实**:原文"73 项 / 740.1 KB"是手册自身被装入审核包之前的旧值,
+  同一 commit 内即失效。改为"以当次 `pack.js` 输出为准"的稳健写法,消除这类自指失实
+
+---
+
 ## [3.11.3] — 接线收口(Wiring Closure)
 
 > 主题:把"接线层"纳入门禁。本版不含新功能。

@@ -1,0 +1,29 @@
+# WP-1.4(CI 接线)—— 把本地门禁接进 CI,PR 必须绿。
+# 本文件在仓库推上 GitHub 之前不生效(dormant);生效后无需再改。
+#
+# 关于 test/perf.js 的相对基线机制(为什么不会在 CI 机器上假失败):
+#   判定 = best <= baseline × 3.0(硬上限 ×10),基线在 test/perf-baseline.json。
+#   绝对毫秒阈值在负载波动的机器上必然假失败,而假失败的门禁会被绕过 —— 比没有门禁更糟。
+#   3× 容差吸收机器差异(通常 <2×),数量级回归(缓存失效、复杂度写错)仍必被抓。
+#
+#   若 CI 机器比基线机器慢超过 3× 导致 Performance 套件失败:
+#   1. 先在开发机上复跑 node test/perf.js 确认不是真回归;
+#   2. 确认后由开发机执行 node test/perf.js --update-baseline 重记并提交。
+#   不要在 CI 机器上重记基线 —— 那会把所有人的门禁都放松到 CI 的最慢水平。
+
+name: gates
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-all:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22   # 门禁用到内置 WebSocket / fetch(Node 22+)
+      - name: 全部门禁(7 套,任一失败非零退出)
+        run: node tools/test-all.js
