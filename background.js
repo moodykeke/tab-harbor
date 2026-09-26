@@ -210,8 +210,17 @@ async function saveWorkspace(title, opts) {
   };
   let wsId;
   if (existing) {
+    // 覆盖更新只刷新"本次收工应收割的字段",不得全量铺:
+    // normalizeWorkspace 会把 payload 里没有的 lastEventId/lastRestoredAt 填成 undefined/0
+    // 一并 assign 进去 —— v3.11.1 声称已修 lastEventId 保留,但只盖住了"新建了记录"的回填分支;
+    // recordEqualsLast 命中(去重)的那次收工仍会丢 lastEventId(工作区引用退化成 :static,
+    // 与记录事件不再去重,×N 虚高),lastRestoredAt 则每次覆盖都被重置(卡片"开工于…"消失)
+    const keepEventId = existing.lastEventId;
+    const keepRestoredAt = existing.lastRestoredAt;
     Object.assign(existing, BGTStore.normalizeWorkspace(payload), { id: existing.id });
     existing.createdAt = now; // 覆盖更新,视为最新一次收工
+    existing.lastEventId = keepEventId;        // 若本次新建了记录,下方 wsRef 回填会覆盖为最新 rec.id
+    existing.lastRestoredAt = keepRestoredAt;
     wsId = existing.id;
   } else {
     const wsObj = BGTStore.normalizeWorkspace(payload);

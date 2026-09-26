@@ -252,6 +252,44 @@ test('右键「存为摘录」:trim 后落 bgtExcerpts,且只写 bgtExcerpts+bgt
   assert.ok(badge && badge.args[0].text === '✓', 'acted → 徽章闪 ✓ 反馈');
 });
 
+test('同名覆盖且记录去重命中:lastEventId 保留、seenCount 不虚高(v3.11.1 修复的补全)', async () => {
+  const env = createEnv({ windows: [W1([T(11, 'https://a.com/')])], storage: { bgtData: EMPTY() } });
+  await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  const ev1 = env.data().workspaces[0].lastEventId;
+  assert.ok(ev1, '首次收工应有 lastEventId');
+  // 第二次同名 + 内容完全相同 → recordEqualsLast 命中,不新建记录
+  const r2 = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  assert.strictEqual(r2.ok, true);
+  const d2 = env.data();
+  assert.strictEqual(d2.workspaces.length, 1);
+  assert.strictEqual(d2.workspaces[0].lastEventId, ev1, '去重命中的覆盖更新不得丢 lastEventId');
+  const entry = BGTStore.buildUrlIdentity(d2).get(BGTStore.normalizeUrl('https://a.com/').key);
+  assert.ok(entry, '身份索引条目应存在');
+  assert.strictEqual(entry.seenCount, 1, '同一次收工的工作区/记录引用必须去重,×N 徽章不得虚高');
+});
+
+test('同名覆盖保留 lastRestoredAt(卡片"开工于…"不因再次收工消失)', async () => {
+  const data = EMPTY();
+  data.workspaces = [BGTStore.normalizeWorkspace({
+    id: 'w1', title: '项目A', tabs: [{ url: 'https://a.com/', savedAt: 1 }], lastRestoredAt: 555,
+  })];
+  const env = createEnv({ windows: [W1([T(11, 'https://a.com/')])], storage: { bgtData: data } });
+  const res = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  assert.strictEqual(res.ok, true);
+  const d = env.data();
+  assert.strictEqual(d.workspaces[0].id, 'w1', '同名应是更新而非新建');
+  assert.strictEqual(d.workspaces[0].lastRestoredAt, 555, 'lastRestoredAt 不得被 normalize 全量铺重置为 0');
+});
+
+test('harness:setData 在首次 persist 之后仍然生效(写 v3 分键,不被读路径忽略)', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  await env.send({ action: 'saveSettings', patch: { theme: 'dark' } }); // 产生首次 persist,bgtMeta 就位
+  const d = EMPTY();
+  d.groups = [BGTStore.normalizeGroup({ id: 'gX', title: '注入', tabs: [] })];
+  env.setData(d);
+  assert.strictEqual(env.data().groups[0].id, 'gX', 'setData 不得在首次 persist 后失效(旧实现只写 bgtData 单键)');
+});
+
 test('renameGroup 对不存在的 id 返回 not-found', async () => {
   const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
   const res = await env.send({ action: 'renameGroup', groupId: 'nope', title: 'x' });

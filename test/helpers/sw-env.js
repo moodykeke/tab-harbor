@@ -315,7 +315,17 @@ function createEnv(opts) {
       }
       return clone(storage.get('bgtData'));
     },
-    setData: (d) => storage.set('bgtData', clone(d)), // 仍按 v2 单键注入,经 store.load 自动迁移
+    /** 注入完整状态:直接写 v3 分键布局 —— 在任何 persist 之后依然可被 data() 读回。
+     *  (旧实现只写 bgtData 单键,首次 persist 产生 bgtMeta 后即被读路径静默忽略)
+     *  要测"v2 旧键 → 迁移"路径,请用 createEnv 的 storage 预置,不要用本方法 */
+    setData: (d) => {
+      storage.delete('bgtData');
+      storage.set('bgtMeta', { schemaVersion: 3, settings: (d && d.settings) || {}, updatedAt: (d && d.updatedAt) || 1 });
+      storage.set('bgtGroups', clone((d && d.groups) || []));
+      storage.set('bgtWorkspaces', clone((d && d.workspaces) || []));
+      storage.set('bgtRecords', clone((d && d.records) || []));
+      storage.set('bgtExcerpts', clone((d && d.excerpts) || []));
+    },
     callCount: (api) => calls.filter((c) => c.api === api).length,
     callsOf: (api) => calls.filter((c) => c.api === api),
     /** 等异步副作用落地(事件监听器不返回 Promise,只能让出事件循环) */

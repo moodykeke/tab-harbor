@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "short_name": "Tab Harbor",
-  "version": "3.12.1",
+  "version": "3.12.2",
   "description": "__MSG_extDesc__",
   "minimum_chrome_version": "116",
   "icons": {
