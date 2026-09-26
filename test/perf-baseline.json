@@ -1,0 +1,15 @@
+{
+  "note": "参考机器上的基线。判定 = best <= baseline × 3(硬上限 ×10)。换机器或有意优化后执行 node test/perf.js --update-baseline 重记。",
+  "recordedAt": "2026-09-26T12:04:34.463Z",
+  "node": "v22.9.0",
+  "tolerance": 3,
+  "hard": 10,
+  "rounds": 4,
+  "metrics": {
+    "buildUrlIdentity(热缓存:同一大库重复解析)": 41.461,
+    "diffTabs(1000 标签集)": 6.124,
+    "weeklyReport(300 条记录)": 17.714,
+    "topHosts(大库)": 40.855,
+    "similarGroups(200 组两两比较)": 53.362
+  }
+}

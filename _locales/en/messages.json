@@ -1,9 +1,9 @@
 {
   "extName": {
-    "message": "Tab Harbor · Tab Harbor"
+    "message": "Tab Harbor"
   },
   "extDesc": {
-    "message": "A harbor for your tabs: save and restore groups & workspaces, tidy by domain, command palette, crash snapshots and WebDAV cloud backup. All data stays local."
+    "message": "A harbor for your tabs: save and restore groups & workspaces, tidy by domain, command palette, crash snapshots. Everything stays on your machine; the optional cloud backup uploads only to your own WebDAV server."
   },
   "cmdSaveCurrent": {
     "message": "Save all tabs of the current window"

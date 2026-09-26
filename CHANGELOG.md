@@ -5,6 +5,61 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 
 ---
 
+## [3.11.3] — 接线收口(Wiring Closure)
+
+> 主题:把"接线层"纳入门禁。本版不含新功能。
+> 起因:v3.11.2 出包时四套测试 57/57 全绿,而同一个包里 5 个功能是真死的、
+> 34% 的体积是测试代码、还夹带了一份内部备忘录。门禁看不见接线层,是根本原因。
+
+### Fixed(P0 · 功能静默失效)
+- **重命名从不落盘**:`manager/modules/events.js` 漏 import `send` —— 分组与工作区重命名
+  只改了内存,刷新即回滚
+- **工作区删标签抛异常**:同文件漏 import `persistAndRenderSoon`(上一轮把该处改为防抖写
+  却未同步 import 行,属自造回归)
+- **"包含全部窗口"无效**:消息路由漏传 `allWindows`,勾选后仍只存聚焦窗口
+  (3.11.1 的 CHANGELOG 曾声称已修复,实际未修)
+- **omnibox 泊位建议静默失效**:调用了从未注入的 `t()`,异常被 catch 吞掉
+- **"替换当前窗口"退化为"合并"**:`chrome.windows.getLastFocused()` 未带 `populate: true`,
+  `cur.tabs` 为 undefined,原有标签永远清不掉
+
+### Fixed(架构一致性)
+- **去重全链路统一到 URLIdentity**:`buildGroup` / `closeSavedTabs` / `mergeSimilarPair` /
+  `batchMerge` / `tidyByDomain` 此前用原始 URL 字符串比较,而 `similarGroups` 用归一化键
+  算相似度 —— 导致"建议合并 → 合并不掉 → 再次建议"的用户可见矛盾。统一到
+  `keySet` / `dedupeTabs` / `appendNewTabs` 三个唯一入口
+- **恢复文档宣称的防抖落盘**:`persistAndRenderSoon` 此前全仓只有一个调用点(即上面那个
+  坏掉的),折叠/排序/主题等纯 UI 态实际都是全库重写。现按文档语义接入这些调用点
+- **omnibox 监听器改为 SW 顶层注册**(MV3 纪律):此前写在 `onInstalled`/`onStartup` 回调里,
+  既可能在冷启动时机缺失,又会在同一实例内重复注册导致建议出现两遍
+
+### Added(验证能力 —— 本版的重点)
+- `test/helpers/sw-env.js` + `test/sw-routes.js`:**Service Worker 运行时 harness**。
+  在 `vm` 上下文中真实加载 `background.js` 与 `shared/*.js`(真实 importScripts 语义),
+  内置内存版 `chrome.*`(窗口/标签世界、storage、事件监听器)与消息投递。20 项断言覆盖
+  全部 12 条消息路由与全部事件监听器
+- `test/seams.js`:8 项静态契约 —— UI→SW 路由一致性、mock↔生产路由镜像(差异只能来自
+  显式豁免表)、三个页面的 DOM id 契约
+- `tools/check-globals.js`:零依赖的未声明标识符检查(漏 import 这一类 P0 的回归闸)。
+  它在修复前对 v3.11.2 源码报出上述前两个缺陷
+- `tools/test-all.js`:发布门禁,7 套 88 项,任一失败非零退出
+- `tools/pack.js`:**可复现打包**。零依赖 ZIP 写入器(zlib deflateRaw)、显式白名单
+  (散落文件天然进不来)、页面引用完整性校验、zip 内时间戳固定(源码不变则 SHA-256 不变)
+
+### Changed
+- 打包与测试口径写进文档:`node tools/pack.js` / `node tools/test-all.js`
+- 隐私表述与代码事实对齐:`_locales` 商店描述与 README 不再声称"无任何网络请求",
+  改为"唯一网络出口是用户自行配置的 WebDAV"(原文与自家 WebDAV 代码自相矛盾)
+- `_locales/en` 的 `extName` 由 `"Tab Harbor · Tab Harbor"` 改为 `"Tab Harbor"`
+- 版本号全面对齐到 3.11.3(此前 manifest 3.11.2 / README v3.5.0 / ARCHITECTURE v3.10.2 /
+  提交说明 v3.11.0 且指向一个不存在的 zip 名)
+- **启用 git 版本控制**;git 之前的历史补丁脚本归档到 `tools/patches/`(只读,附说明)
+
+### 测试
+- 7 套 88 项:`store 37` + `perf 9` + `i18n 5` + `integration 9` + `sw-routes 20` + `seams 8`(另加 lint 门禁)
+- 变异验证(证明测试本身有效):换回 v3.11.2 的 `background.js` → `sw-routes` 报 5 项 FAIL;
+  把 `case 'saveWorkspace':` 改名 → `seams` 报 4 项 FAIL;换回旧 `store.js` 的同一 fixture
+  下 `buildGroup(dedupe:true)` 保留 3 条、修复后 1 条
+
 ## [3.11.2] — 性能守卫强化
 
 ### Changed

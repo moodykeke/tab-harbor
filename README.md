@@ -1,4 +1,4 @@
-# Tab Harbor · 标签港湾 v3.5.0
+# Tab Harbor · 标签港湾 v3.11.3
 
 > 原名 Better Group Tabs,全面重构后启用新名称与新面貌。
 > 内部存储键保持兼容:老用户安装后数据无缝延续。
@@ -34,7 +34,7 @@
   (跳到设置补全分组名),配合"自动套用规则"形成 行为 → 历史 → 洞察 → 规则 → 自动化 闭环
 - **港湾周报**:时间轴顶部纯本地节奏摘要——"本周入港 N 次 · 比上周 ±X% · 最常停泊:host(N 次)",
   日期芯片一键**把这一天找回来**(当天记录并集转分组,可撤销)
-- **多步撤销**:`Ctrl+Z` / `Ctrl+Shift+Z` 撤销/重做最近 20 步列表级操作(删除/清空/合并/整理),
+- **多步撤销**:`Ctrl+Z` / `Ctrl+Shift+Z` 撤销/重做最近 10 步列表级操作(删除/清空/合并/整理),
   合并式语义——只找回被删的,不覆盖期间的编辑;创建型操作(找回/快照转分组)为精确回滚
 - **原生分组导入**:把当前窗口已有的 Chrome 原生标签组导入为持久分组
 - **批量操作**:勾选多个分组 → 合并(去重)/ 导出 / 删除,全部可撤销
@@ -95,7 +95,9 @@
 
 - 原生标签组导入/恢复、右键菜单、omnibox(`harbor` 关键词)、侧边栏需在真实 Chrome 114+ 中使用
 - 云端备份为 WebDAV 协议:不支持 OAuth 网盘(如纯网页版 Dropbox);WebDAV 密码以明文存于本机 `chrome.storage.local`,云端副本已剥离密码
-- `dev-server.js`、`test/`、`tools/` 为开发文件,Chrome 会自动忽略;打包上架 zip 时剔除即可
+- `dev-server.js`、`test/`、`tools/` 为开发文件。**不要手工压缩打包** —— 用 `node tools/pack.js`:
+  它按显式白名单只装入运行时文件,并校验页面引用的资源是否齐全
+  (v3.11.2 的商店包因手工压缩混入了 `test/` 与一份内部备忘录)
 - 预览模式(mock)下,依赖后台的动作(保存全部窗口、原生分组等)会给出模拟提示
 
 ## 国际化
@@ -107,17 +109,25 @@
 
 ## 性能与资源
 
-- **零依赖、无构建**:扩展全包约 100KB(gzip 后更小);Service Worker 事件驱动,空闲自动卸载
-- **URL 归一化缓存**(1 万条上限,最旧逐出):大库重复解析零开销
-- **低价值状态变更防抖落盘**(折叠/重命名/排序等 300ms 合并,页面隐藏立即刷出),数据型操作即时落盘
+- **零依赖、无构建**:商店包约 116KB;Service Worker 事件驱动,空闲自动卸载
+- **URL 归一化缓存**(1 万条上限,按插入序逐出):大库重复解析零开销。
+  注意边界:库的不同 URL 总数超过 1 万条后,热条目会被挤掉、缓存收益归零,渲染退化为全量重解析
+- **低价值状态变更防抖落盘**(折叠/显示归档/排序/主题等 300ms 合并,页面隐藏或关闭时立即刷出),
+  数据型操作(保存/收工/删除/合并/重命名)即时落盘。
+  注:落盘是全量 blob 重写,大库下单次序列化成本随库增大而线性上升 ——
+  写入模型的分键化改造留待 v3.12/v4.0 的存储决策(见 ARCHITECTURE 第 5 节)
 - **DOM 批量挂载**(DocumentFragment)+ 搜索走轻量路径(不重建 DOM)
 - **右键菜单指纹守卫**:内容未变化不重建;撤销栈收敛 10 步控制内存
 - 压力基线(120 组 1440 标签 + 150 条记录):全量渲染 ~103ms、搜索 ~9ms、时间轴差分 ~24ms、堆 ~25MB
-- 数据层基准:`node test/perf.js`(身份索引 / 差分 / 周报 / 序列化体积,阈值断言)
+- 数据层基准:`node tools/test-all.js`(身份索引 / 差分 / 周报 / 序列化体积,阈值断言)
 
 ## 数据与隐私
 
-所有数据仅存本地 `chrome.storage.local`,无任何网络请求。
+所有数据默认只存本地 `chrome.storage.local`。扩展本身不向任何第三方服务器发送数据:
+唯一的网络出口是你**自己配置**的 WebDAV 云端备份(未配置时不发起任何网络请求)。
+云端副本上传前会剥离 WebDAV 密码;该密码本身以明文存于本机 `chrome.storage.local`,
+请勿在共享浏览器配置中使用。隐私政策即架构本身。
+
 写操作经上下文内串行队列,并以变更令牌过滤自回声;导出文件带 `version` 字段可安全再导入。
 
 ## 目录结构
@@ -127,7 +137,8 @@ better-group-tabs/
 ├── manifest.json          # MV3:action / side_panel / omnibox / commands
 ├── background.js          # Service Worker:保存流水线、快捷键、快照、右键菜单、omnibox
 ├── shared/
-│   ├── store.js           # 共享数据层:结构、迁移、过滤、写入队列、快照、规则
+│   ├── i18n.js            # 中英字典(中文原文即键)
+│   ├── store.js           # 共享数据层:结构、迁移、过滤、写入队列、快照、规则、URLIdentity
 │   └── mock-chrome.js     # 预览模拟层(真实扩展环境自动跳过)
 ├── styles/base.css        # 设计系统:主题变量、按钮、菜单、对话框、Toast
 ├── manager/
@@ -135,16 +146,34 @@ better-group-tabs/
 │   ├── modules/           # core 状态/工具 · icons · ui · render · actions · settings · dnd · events
 ├── sidepanel/             # 侧边栏常驻面板
 ├── popup/                 # 工具栏弹窗
-├── test/test-store.js     # 数据层单元测试(node test/test-store.js)
-├── dev-server.js          # 本地预览服务器(node dev-server.js)
-└── icons/                 # 沿用 v1 品牌图标
+├── icons/                 # 品牌图标(生成脚本 tools/make-icons.js)
+├── test/                  # 测试套件(见上;node tools/test-all.js 跑全部)
+│   ├── test-store.js  perf.js  i18n.js  integration.js
+│   ├── sw-routes.js       #   Service Worker 运行时 harness(真实加载 background.js)
+│   ├── seams.js           #   静态契约:路由 / mock 镜像 / DOM id
+│   └── helpers/sw-env.js  #   内存版 chrome.* 与消息投递
+├── tools/
+│   ├── pack.js            # 可复现打包(零依赖 ZIP 写入器 + 白名单 + SHA-256)
+│   ├── test-all.js        # 发布门禁:7 套 88 项断言
+│   ├── check-globals.js   # 静态门禁:未声明标识符
+│   └── patches/           # 历史补丁脚本存档(只读,勿运行 —— 见该目录 README)
+└── dev-server.js          # 本地预览服务器(node dev-server.js)
 ```
 
 ## 本地预览与测试
 
 - 界面预览:浏览器直接打开 `manager/manager.html`(mock 数据自动生效),
   或 `node dev-server.js` 后访问 `http://127.0.0.1:8642/manager/manager.html`
-- 数据层测试:`node test/test-store.js`(34 项功能断言)、`node test/perf.js`(9 项基准,best-of-3 抗抖动)、`node test/integration.js`(9 项真实链路集成:备份信任链/恢复事务/事件去重/智能去重端到端)、`node test/i18n.js`(5 项完整性穷尽检查:tr 键 + HTML 文本节点/title/placeholder 全扫描 + 白名单)
+- **发布门禁(一次跑全部)**:`node tools/test-all.js` —— 7 套 88 项断言,任一失败即非零退出
+  - `tools/check-globals.js` 静态门禁:未声明标识符(漏 import 这一类 P0 的回归闸)
+  - `test/test-store.js`(37 项)数据层纯函数:保存过滤 / 迁移 / 规则分流 / 备份 / 相似度 / 分桶 / 身份层去重
+  - `test/perf.js`(9 项)性能基准,best-of-3 抗抖动
+  - `test/i18n.js`(5 项)翻译完整性穷尽检查:tr 键 + HTML 文本节点/title/placeholder + 白名单
+  - `test/integration.js`(9 项)真实链路:备份信任链 / 恢复事务 / 事件去重 / 智能去重端到端
+  - `test/sw-routes.js`(20 项)**Service Worker 运行时**:在 vm 中真实加载 background.js,
+    驱动全部消息路由与事件监听器(多窗口收工 / replace 开工 / 泊位建议 / 云端信封与篡改阻断 / 快照 / 菜单 / 徽章)
+  - `test/seams.js`(8 项)静态契约:UI→SW 路由一致性、mock↔生产路由镜像、三个页面的 DOM id 契约
+- 打包:`node tools/pack.js`(先跑门禁,再出商店包 + 审核包,并打印商店包 SHA-256)
 
 ## 与 v1 的主要差异
 

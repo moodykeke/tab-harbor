@@ -111,7 +111,7 @@ export function bindEvents() {
     const group = state.data.groups.find((g) => g.id === card.dataset.id);
     if (!group) return;
     group.collapsed = !group.collapsed;
-    persistAndRender();
+    persistAndRenderSoon(); // 纯 UI 态:立即渲染,落盘防抖合并
   });
 
   // 重命名与多选
@@ -145,7 +145,7 @@ export function bindEvents() {
     const group = card ? state.data.groups.find((g) => g.id === card.dataset.id) : null;
     switch (act) {
       case 'collapse':
-        if (group) { group.collapsed = !group.collapsed; persistAndRender(); }
+        if (group) { group.collapsed = !group.collapsed; persistAndRenderSoon(); }
         break;
       case 'restore': if (group) restoreGroup(group, 'current'); break;
       case 'restore-menu': if (group) openRestoreMenu(actEl, group); break;
@@ -186,12 +186,12 @@ export function bindEvents() {
   // 工具栏
   $('#btnArchived').addEventListener('click', () => {
     state.data.settings.showArchived = !state.data.settings.showArchived;
-    persistAndRender();
+    persistAndRenderSoon();
   });
   $('#btnToggleAll').addEventListener('click', () => {
     const anyExpanded = state.data.groups.some((g) => !g.collapsed);
     state.data.groups.forEach((g) => { g.collapsed = anyExpanded; });
-    persistAndRender();
+    persistAndRenderSoon();
   });
 
   // 批量操作条
@@ -367,14 +367,14 @@ export function bindEvents() {
     openMenu($('#sortBtn'), Object.keys(SORT_LABELS).map((key) => ({
       label: SORT_LABELS[key], icon: ICONS.sort,
       checked: state.data.settings.sortMode === key,
-      onPick: () => { state.data.settings.sortMode = key; persistAndRender(); },
+      onPick: () => { state.data.settings.sortMode = key; persistAndRenderSoon(); },
     })));
   });
   $('#themeBtn').addEventListener('click', () => {
     openMenu($('#themeBtn'), Object.keys(THEME_LABELS).map((key) => ({
       label: THEME_LABELS[key], icon: ICONS.moon,
       checked: state.data.settings.theme === key,
-      onPick: () => { state.data.settings.theme = key; persistAndRender(); },
+      onPick: () => { state.data.settings.theme = key; persistAndRenderSoon(); },
     })));
   });
 
