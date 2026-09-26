@@ -5,29 +5,47 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 
 ---
 
-## [3.11.4-dev] — 架构前置(Wave 1)
+## [3.11.4] — 架构前置(Wave 1)
 
-> 主题:手册 Wave 1 的"不新增用户可见功能"项。按 `DEV-HANDBOOK.md` §6 推进。
-> 本段在发布前会持续追加;已落条目均通过全部门禁。
+> 主题:手册 Wave 1 全部落地:写入模型决策(ADR-001)+ 分键迁移 + CI 接线。
+> 用户可见变化:**无**。旧数据首次加载时自动迁移为分键布局(留底 `bgtData_v2_backup`,可回滚)。
+> 门禁 97 → **104 项**(项数只会增)。
 
 ### Decided(写入模型 · 手册决策 1 / WP-1.1)
 - **ADR-001:按集合分键存储**(`docs/ADR-001-write-model.md`)。实测依据:合成库
   (120 组/1440 标签/300 记录)中 records 占整包 **78.1%**(811KB/1039KB),而 manager
-  高频写(改名/置顶/拖拽)只动 groups —— 今天每笔都在白付 78% 的 records 税。
+  高频写(改名/置顶/拖拽)只动 groups —— 此前每笔都在白付 78% 的 records 税。
   决策:`bgtMeta`/`bgtGroups`/`bgtWorkspaces`/`bgtRecords` 四键,跨集合写走单次
-  `set()` 保原子;迁移照抄 v1→v2 先例(留底 + 原子切换)。实现(迁移 WP)另行合入,
-  验收断言已写入 ADR §9
-- **发现并记录 mock 层既有偏差**:`shared/mock-chrome.js` 的 `storage.local.set()` 只认
-  `bgtData` 键,其余键静默丢弃(违反手册规矩 10 同口径)。修复列入迁移 WP,ADR §6.4
+  `set()` 保原子;迁移照抄 v1→v2 先例(留底 + 原子切换);blob+预算方案(B)的
+  否决理由完整记录于 ADR §7
+
+### Changed(存储布局 · ADR-001 落地)
+- **四键布局 + v2 自动迁移**:`load()` 仍是单一合并入口(备份/指纹/渲染层零改动),
+  旧单键 `bgtData` 首次加载即迁移(留底 → 单次原子写四键 → 移除旧键)
+- **分集合写**:`persist(data, collections)` 未被触的集合不进键集;SW 重命名路由、
+  popup 设置开关已接上(改名只写 `bgtGroups`+`bgtMeta`);徽章/右键菜单听
+  `bgtGroups`,manager/sidepanel 的回声令牌协议随 `bgtMeta.updatedAt`,零协议变化
+- **mock 存储层同口径修复**(规矩 10):`mock-chrome.js` 的 `set()` 此前只认
+  `bgtData`、其余键**静默丢弃**(预览层潜伏偏差,ADR §2 发现)——已通用化,
+  `readData`/`writeData` 落分键槽位
 
 ### Added(工程能力)
 - **CI 接线(WP-1.4)**:`.github/workflows/ci.yml` —— push/PR 跑 `node tools/test-all.js`。
   推上托管平台前 dormant。perf 相对基线机制与"不要在 CI 机器上重记基线"写入文件注释
 - **审核包纳入 `docs/` 目录**(决策记录随审核包分发,今后 ADR 增补无需改 pack 清单)
+- **7 项存储测试**(对应 ADR §9 验收断言):迁移真发生 / 迁移单次原子写 /
+  仅触 groups 不碰 records 键(可证伪)/ 缺省全量原子 / settings-only 只落 meta /
+  回声令牌 / 往返一致。两条变异验证均红:persist 改回整包写 → 2 断言红;
+  迁移拆两次 set → 原子性断言红
 
 ### Fixed(文档与代码对齐 · 手册规矩 6)
 - **手册 §3 审核包数字失实**:原文"73 项 / 740.1 KB"是手册自身被装入审核包之前的旧值,
   同一 commit 内即失效。改为"以当次 `pack.js` 输出为准"的稳健写法,消除这类自指失实
+- **提交说明.md 两处历史失实**:商店包"33 项"与门禁"88 项断言"均为旧值(3.11.3 实际
+  31 项 / 97 项)—— 本版起按当次实测回填
+- **ADR-001 配额前提更正**:原文称"未声明 `unlimitedStorage`、受 10MB 配额限制",经查
+  manifest 实际已声明 `unlimitedStorage`。分键决策的核心论据(写放大,非配额)不受影响,
+  §3/§8 的配额相关表述已按代码事实更正(发现于提交说明权限表核对时)
 
 ---
 

@@ -10,7 +10,7 @@
 ## 1. 十分钟上手
 
 ```bash
-# 全部门禁(7 套 97 项,任一失败非零退出)—— 提交前必跑
+# 全部门禁(7 套 104 项,任一失败非零退出)—— 提交前必跑
 node tools/test-all.js
 
 # 出包(先跑门禁,再出商店包 + 审核包,并打印 SHA-256)
@@ -68,12 +68,12 @@ node tools/make-screenshots.js
 
 以下全部是实测值,不是估计。改动后如果这些数字显著漂移,那本身就是要解释的事。
 
-### 门禁:7 套 97 项
+### 门禁:7 套 104 项
 
 | 套件 | 项数 | 覆盖层 |
 | --- | --- | --- |
 | `tools/check-globals.js` | exit 0 | 静态:未声明标识符(漏 import 这类 P0) |
-| `test/test-store.js` | 37 | 数据层纯函数 |
+| `test/test-store.js` | 44 | 数据层纯函数 + 分键存储/迁移(ADR-001 §9) |
 | `test/perf.js` | 9 | 性能(相对基线) |
 | `test/i18n.js` | 5 | 翻译完整性 |
 | `test/integration.js` | 9 | 真实链路 |
@@ -90,7 +90,7 @@ node tools/make-screenshots.js
 | `topHosts`(大库) | 40.9ms | |
 | `similarGroups`(200 组) | 53.4ms | |
 
-**写路径**(120 组 / 1440 标签 / 300 记录 = **0.79MB** 载荷):`normalizeData` 全库重建 2.9ms + 序列化/克隆 35.2ms。**每次落盘都是全库 blob 重写。**
+**写路径**(120 组 / 1440 标签 / 300 记录 = **0.79MB** 载荷):`normalizeData` 全库重建 2.9ms + 序列化/克隆 35.2ms。v3.11.4 之前每次落盘都是全库 blob 重写;**分键后(ADR-001)只写被触集合** —— records 占整包 78.1%,改名/置顶这类高频写从此只付 groups 的成本。
 
 **已知悬崖**:`urlCache` 上限 1 万条、按插入序逐出。库的不同 URL 总数超过 1 万后热条目被挤掉、缓存收益归零 —— 实测热路径 **27ms → 674ms**,此后每次渲染都是全量重解析。
 
@@ -98,8 +98,8 @@ node tools/make-screenshots.js
 
 ### 包与产物
 
-- 商店包:**31 项 / 113.8 KB**,SHA-256 `94b2f5e6…`,manifest 在根,**确定性的**(同源码多次打包哈希一致;商店包只含扩展本体,以下文档变更不影响其哈希)
-- 审核包:内嵌商店包 + `BUILD-INFO.txt` + `TEST-REPORT.txt` + 全部文档/测试/工具。**项数与大小随文档集变动,以当次 `pack.js` 输出为准**(2026-09-26 实测 75 项 / 约 760 KB)
+- 商店包:31 项 / 113.8 KB(v3.11.3 基线值,SHA-256 `94b2f5e6…`),manifest 在根,**确定性的**(同源码多次打包哈希一致;版本或代码推进后以当次 `pack.js` 输出与 `BUILD-INFO.txt` 为准)
+- 审核包:内嵌商店包 + `BUILD-INFO.txt` + `TEST-REPORT.txt` + 全部文档/测试/工具。**项数与大小随文档集变动,以当次 `pack.js` 输出为准**(2026-09-26 实测 75 项 / 约 766 KB)
 - `minimum_chrome_version: 116`(`sidePanel.open()` 的真实下限,已对照 Chrome 官方参考核实)
 
 ### 已验证的性能机制
@@ -117,7 +117,7 @@ node tools/make-screenshots.js
 | --- | --- | --- |
 | **读不到网页正文**(默认) | 无 `content_scripts`、无 `host_permissions`,只声明了 WebDAV 的 `optional_host_permissions` | 任何"高亮/跟随链接/抓正文"的需求,**必须**先过第 6 章 WP-4.2 的权限设计 |
 | **SW 会被回收** | MV3 运行时约束,空闲约 30s 卸载 | 状态不能放全局变量;定时任务必须用 `chrome.alarms`(最小 0.5 分钟);`setTimeout` 只能用于短时 UI 效果,**不能用于调度** |
-| **`chrome.storage.local` 是全量 blob** | `persist()` 每次 `normalizeData()` + 整包 `set` | **任何 MB 级内容都不能进 store**(见第 6 章 WP-5.4) |
+| **`chrome.storage.local` 按集合分键,写成本随单键体量线性** | v3.11.4 起(ADR-001)`bgtMeta`/`bgtGroups`/`bgtWorkspaces`/`bgtRecords` 四键,只写被触集合 | 虽已声明 `unlimitedStorage`(无硬配额),但每笔写的序列化耗时随单键体积线性增长:**MB 级内容依然不能进 store**(见第 6 章 WP-5.4) |
 | **派生索引每次渲染全量重算** | 设计选择:派生视图不落盘 ⇒ 永不漂移 | 数据稠密度一上来就会卡首屏。解法是"派生 + 指纹记忆化",不是落盘索引(见 WP-1.3) |
 | **`chrome.windows` 没有 `.query()`** | API 事实 | 用 `getAll` / `getLastFocused` / `getCurrent`;**要 `tabs` 字段必须传 `{populate:true}`**(曾因此让"替换当前窗口"退化成"合并") |
 | **MHTML 只能从文件系统加载** | Chrome 安全限制 | 完整快照**无法在扩展页内渲染**,只能写盘后以 `file://` 打开(WP-5.4) |
@@ -260,7 +260,7 @@ node tools/make-screenshots.js
 
 ### 一个 WP 算"做完"的条件
 
-1. `node tools/test-all.js` **7 套 97 项全绿**(项数只会增)
+1. `node tools/test-all.js` **7 套 104 项全绿**(项数只会增)
 2. 行为改动**带一个能证伪的断言**,并通过**变异验证**:把实现改回旧写法,断言必须变红
 3. 新增 SW 路由已登记进 `test/seams.js` 的 `SW_CONTRACT`
 4. 新增 `tr('…')` 键已在 `shared/i18n.js` 的 `EN` 表里(用**单引号**,`test/i18n.js` 是文本扫描不是解析);HTML 静态中文同理

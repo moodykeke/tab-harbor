@@ -49,7 +49,7 @@ v3.12 的项目内 checkpoint 时间线、v4.0 的被动 checkpoint 与 Delta �
 | --- | --- | --- |
 | 高频小写的成本 | 只付被触集合(改名 2.3ms / 227KB) | 永远付整包(12.1ms / 1039KB,且随历史增长) |
 | 跨集合原子性 | 多键单次 `set()` 保持 | 天然具备 |
-| 配额(chrome.storage.local 10MB) | 不提升,但消除放大 | 每次写都逼近,Delta 历史下无解 |
+| 配额(manifest 已声明 `unlimitedStorage`,无硬上限) | 消除每笔写随全库增长的放大 | 每笔写的体量与耗时仍随单键体积无界增长(Delta 历史下持续恶化) |
 | 对 WP-5.1(Delta 历史) | 承载:records 独立增长、独立淘汰 | 阻塞:必须拒绝或降级 |
 | 对决策 2(Single Writer) | 缩小丢更新爆炸半径(按集合隔离) | 无改善 |
 | 迁移成本 | 一次性(§6,先例 v1→v2) | 零 |
@@ -96,7 +96,7 @@ v3.12 的项目内 checkpoint 时间线、v4.0 的被动 checkpoint 与 Delta �
 - 改动面:`shared/store.js`(`load`/`persist`/迁移/mock 引用)、`shared/mock-chrome.js`(存储 shim)、`manager/modules/core.js` 与 `popup/popup.js` 的 `persist` 调用点(签名加参,默认全量)、测试夹具。
 - `normalizeData` 从"读写共用入口"收敛为"读取端合并器";`persist` 不再整包归一化 —— 这是行为差异,迁移 WP 必须带证伪断言(见 §9)。
 - 多上下文丢更新**只缩小不消除**(按集合隔离了爆炸半径):popup 的 groups 快照覆盖仍可能丢 manager 并发改动。WP-1.2 Single Writer 仍必须做,且应在分键落地**之后**做 —— SW 端点按最终键形状写一次,不写两遍。
-- 分键不提升 `chrome.storage.local` 的 10MB 配额(未声明 `unlimitedStorage`);WP-5.1 的 Delta 设计仍需自带淘汰策略。
+- manifest 已声明 `unlimitedStorage`(无硬配额)——**但配额不是放大器,写路径成本才是**:序列化与克隆耗时随单键体量线性增长,分键消除的是"每笔写都付全库成本",不是体积本身。WP-5.1 的 Delta 设计仍需自带淘汰策略(`RECORDS_MAX` 只对 records 滚动窗口)。
 
 ## 9. 迁移 WP 的验收(在手册 §8 六条之外追加)
 
