@@ -1,12 +1,22 @@
 /**
  * Tab Harbor(原 Better Group Tabs)— 共享数据层
  * 在 background(service worker 经 importScripts)、popup、manager 之间共用。
- * 负责:存储结构(v2)、v1 老数据自动迁移、保存过滤逻辑、常用工具函数。
+ * 负责:存储结构(v3 分键,见 ADR-001;v1/v2 老数据自动迁移)、保存过滤逻辑、常用工具函数。
  */
 (function (root) {
   'use strict';
 
-  const STORE_KEY = 'bgtData';
+  /* 存储布局(ADR-001,docs/ADR-001-write-model.md):
+   * v2 及之前:单键 bgtData 整包重写(只读兼容,加载时自动迁移)。
+   * v3 起:按集合分键 —— meta 恒随每次写入(回声令牌 + settings),集合按需。
+   * 跨集合一致性写(迁移/恢复/导入)必须走单次 set(),多键单调用是单事务。 */
+  const STORE_KEY = 'bgtData';            // v2 单 blob,仅作迁移源
+  const META_KEY = 'bgtMeta';             // { schemaVersion, settings, updatedAt }
+  const GROUPS_KEY = 'bgtGroups';
+  const WORKSPACES_KEY = 'bgtWorkspaces';
+  const RECORDS_KEY = 'bgtRecords';
+  const LEGACY_BACKUP_KEY = 'bgtData_v2_backup';
+  const STORAGE_SCHEMA = 3;               // 存储布局版本(数据形状仍是 DATA_VERSION)
   const SNAPSHOT_KEY = 'bgtSnapshots';
   const DATA_VERSION = 2;
   const MANAGER_PAGE = 'manager/manager.html';
@@ -194,11 +204,23 @@
     return out;
   }
 
-  /** 读取全部数据;发现 v1 结构(tabGroups/options)时自动迁移为 v2 */
+  /** 读取全部数据(合并视图);发现 v3 分键直接组装,v2 单键自动迁移,发现 v1 结构(tabGroups/options)时自动迁移 */
   async function load() {
-    const res = await chrome.storage.local.get([STORE_KEY, 'tabGroups', 'options']);
+    const res = await chrome.storage.local.get([META_KEY, GROUPS_KEY, WORKSPACES_KEY, RECORDS_KEY, STORE_KEY, 'tabGroups', 'options']);
+    const meta = res[META_KEY];
+    if (meta && typeof meta === 'object') {
+      return normalizeData({
+        groups: res[GROUPS_KEY],
+        workspaces: res[WORKSPACES_KEY],
+        records: res[RECORDS_KEY],
+        settings: meta.settings,
+        updatedAt: meta.updatedAt,
+      });
+    }
     if (res[STORE_KEY] && typeof res[STORE_KEY] === 'object') {
-      return normalizeData(res[STORE_KEY]);
+      const data = normalizeData(res[STORE_KEY]);
+      await migrateToSplitKeys(data, res[STORE_KEY]);
+      return data;
     }
     if (Array.isArray(res.tabGroups) && res.tabGroups.length) {
       const data = migrateV1(res.tabGroups, res.options);
@@ -208,6 +230,14 @@
       return data;
     }
     return emptyData();
+  }
+
+  /** v2 单键 → v3 分键,一次性迁移:留底 → 单次原子写四键 → 移除旧键(先例:migrateV1) */
+  async function migrateToSplitKeys(data, legacyRaw) {
+    await chrome.storage.local.set({ [LEGACY_BACKUP_KEY]: legacyRaw });
+    data.updatedAt = data.updatedAt || Date.now();
+    await chrome.storage.local.set(buildWrites(data, null));
+    await chrome.storage.local.remove([STORE_KEY]);
   }
 
   /** v1:tabGroups:[{id,date,title?,tabs:[{url,title,favIconUrl,pinned}]}] + options.deleteTabOnOpen */
@@ -241,10 +271,32 @@
     return run;
   }
 
-  async function persist(data) {
+  async function persist(data, collections) {
     data.updatedAt = Date.now();
     lastWrittenAt = data.updatedAt;
-    await chrome.storage.local.set({ [STORE_KEY]: normalizeData(data) });
+    await chrome.storage.local.set(buildWrites(data, collections));
+  }
+
+  /**
+   * 组装单次 set 的键集(ADR-001 §5):
+   * - meta 恒写:跨上下文回声令牌(updatedAt)+ settings 都住这里;
+   * - collections 指定被触集合({groups|workspaces|records:true}),缺省全量;
+   * - 未被触的集合**不进键集** —— 这就是分键的收益所在,任何"顺手全量"都是回归;
+   * - 被写集合在其写入路径上归一化(不再整包归一化,读取端 load 仍是单一合并入口)。
+   */
+  function buildWrites(data, collections) {
+    const all = !collections;
+    const out = {
+      [META_KEY]: {
+        schemaVersion: STORAGE_SCHEMA,
+        settings: normalizeSettings(data.settings),
+        updatedAt: data.updatedAt,
+      },
+    };
+    if (all || collections.groups) out[GROUPS_KEY] = (data.groups || []).map(normalizeGroup);
+    if (all || collections.workspaces) out[WORKSPACES_KEY] = (data.workspaces || []).map(normalizeWorkspace);
+    if (all || collections.records) out[RECORDS_KEY] = (data.records || []).map(normalizeRecord).slice(-RECORDS_MAX);
+    return out;
   }
 
   /** 是否为本上下文刚写入的变更(用于跳过 storage.onChanged 自回声) */
@@ -986,6 +1038,12 @@
 
   const api = {
     STORE_KEY: STORE_KEY,
+    META_KEY: META_KEY,
+    GROUPS_KEY: GROUPS_KEY,
+    WORKSPACES_KEY: WORKSPACES_KEY,
+    RECORDS_KEY: RECORDS_KEY,
+    LEGACY_BACKUP_KEY: LEGACY_BACKUP_KEY,
+    STORAGE_SCHEMA: STORAGE_SCHEMA,
     SNAPSHOT_KEY: SNAPSHOT_KEY,
     DATA_VERSION: DATA_VERSION,
     MANAGER_PAGE: MANAGER_PAGE,
@@ -994,6 +1052,7 @@
     genId: genId,
     emptyData: emptyData,
     normalizeGroup: normalizeGroup,
+    normalizeWorkspace: normalizeWorkspace,
     normalizeData: normalizeData,
     load: load,
     persist: persist,

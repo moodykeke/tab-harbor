@@ -528,6 +528,117 @@ test('相似分组闭环:合并去重与相似度判定同口径,合并后不再
   assert.strictEqual(BGTStore.similarGroups(data, 0.8).length, 0);
 });
 
+/* ---- v3 分键存储(ADR-001,docs/ADR-001-write-model.md §9 验收断言) ---- */
+
+/** chrome.storage.local 内存替身:记录每次 set 写了哪些键(分键观测点) */
+function stubStorage(initial) {
+  const mem = new Map(Object.entries(JSON.parse(JSON.stringify(initial || {}))));
+  const setCalls = [];
+  global.chrome = {
+    storage: {
+      local: {
+        get: async (keys) => {
+          const out = {};
+          for (const k of (keys == null ? Array.from(mem.keys()) : Array.isArray(keys) ? keys : [keys])) {
+            if (mem.has(k)) out[k] = mem.get(k);
+          }
+          return out;
+        },
+        set: async (obj) => { setCalls.push(Object.keys(obj).sort()); for (const [k, v] of Object.entries(obj)) mem.set(k, v); },
+        remove: async (keys) => { for (const k of (Array.isArray(keys) ? keys : [keys])) mem.delete(k); },
+      },
+    },
+  };
+  return { mem, setCalls };
+}
+
+const K = { meta: 'bgtMeta', groups: 'bgtGroups', ws: 'bgtWorkspaces', rec: 'bgtRecords' };
+
+function legacyBlob() {
+  return {
+    version: 2,
+    groups: [BGTStore.normalizeGroup({ id: 'g1', title: '旧分组', tabs: [{ url: 'https://a.com/' }] })],
+    workspaces: [BGTStore.normalizeWorkspace({ id: 'w1', title: '旧工作区' })],
+    records: [BGTStore.makeRecord({ title: '旧记录', tabs: [BGTStore.makeStoredTab({ url: 'https://b.com/' })] })],
+    settings: { ...BGTStore.DEFAULT_SETTINGS, theme: 'dark' },
+    updatedAt: 123,
+  };
+}
+
+test('ADR-001 §9.1: v2 单键加载即迁移 —— 四键出现、旧键移除、留底保留', async () => {
+  const env = stubStorage({ bgtData: legacyBlob() });
+  const data = await BGTStore.load();
+  assert.ok(env.mem.has(K.meta), 'bgtMeta 应存在');
+  assert.ok(env.mem.has(K.groups), 'bgtGroups 应存在');
+  assert.ok(env.mem.has(K.ws), 'bgtWorkspaces 应存在');
+  assert.ok(env.mem.has(K.rec), 'bgtRecords 应存在');
+  assert.strictEqual(env.mem.get(K.meta).schemaVersion, BGTStore.STORAGE_SCHEMA, 'meta 应标记分键布局版本');
+  assert.ok(!env.mem.has('bgtData'), '旧单键应被移除');
+  assert.ok(env.mem.has(BGTStore.LEGACY_BACKUP_KEY), '应保留 v2 留底');
+  assert.strictEqual(data.groups[0].id, 'g1');
+  assert.strictEqual(data.settings.theme, 'dark');
+  assert.strictEqual(data.records.length, 1);
+});
+
+test('ADR-001 §9.3: 迁移写是单次原子 set(四键同调用)', async () => {
+  const env = stubStorage({ bgtData: legacyBlob() });
+  await BGTStore.load();
+  const migrationWrites = env.setCalls.filter((ks) => ks.includes(K.meta));
+  assert.strictEqual(migrationWrites.length, 1, '迁移只应有一次含 meta 的写');
+  assert.deepStrictEqual(migrationWrites[0], [K.groups, K.meta, K.rec, K.ws].sort(), '四键必须在同一次 set 里');
+});
+
+test('ADR-001 §9.2: 仅触 groups 的写不碰 records 键(分键收益可证伪)', async () => {
+  const env = stubStorage({ bgtData: legacyBlob() });
+  const data = await BGTStore.load();
+  env.setCalls.length = 0;
+  const recordsBefore = JSON.stringify(env.mem.get(K.rec));
+  data.groups[0].title = '改名后';
+  await BGTStore.persist(data, { groups: true });
+  assert.deepStrictEqual(env.setCalls, [[K.groups, K.meta].sort()], '只应写 bgtGroups + bgtMeta');
+  assert.strictEqual(JSON.stringify(env.mem.get(K.rec)), recordsBefore, 'bgtRecords 不得被重写');
+  assert.strictEqual(env.mem.get(K.groups)[0].title, '改名后');
+});
+
+test('缺省 persist 为全量单次原子写(迁移/恢复/导入路径)', async () => {
+  const env = stubStorage({ bgtData: legacyBlob() });
+  const data = await BGTStore.load();
+  env.setCalls.length = 0;
+  await BGTStore.persist(data);
+  assert.strictEqual(env.setCalls.length, 1, '全量写应是单次 set');
+  assert.deepStrictEqual(env.setCalls[0], [K.groups, K.meta, K.rec, K.ws].sort());
+});
+
+test('settings-only 写只落 meta(popup 选项路径不重写任何集合)', async () => {
+  const env = stubStorage({ bgtData: legacyBlob() });
+  const data = await BGTStore.load();
+  env.setCalls.length = 0;
+  data.settings.excludePinned = true;
+  await BGTStore.persist(data, { settings: true });
+  assert.deepStrictEqual(env.setCalls, [[K.meta].sort()]);
+  assert.strictEqual(env.mem.get(K.meta).settings.excludePinned, true);
+});
+
+test('回声令牌随 bgtMeta.updatedAt 走(onChanged 过滤协议不变)', async () => {
+  stubStorage({ bgtData: legacyBlob() });
+  const data = await BGTStore.load();
+  await BGTStore.persist(data, { groups: true });
+  const res = await global.chrome.storage.local.get('bgtMeta');
+  assert.strictEqual(BGTStore.isSelfWrite(res.bgtMeta.updatedAt), true, '自己刚写的 updatedAt 应被识别');
+  assert.strictEqual(BGTStore.isSelfWrite(res.bgtMeta.updatedAt - 1), false, '别的时间戳不应被识别');
+});
+
+test('分键往返:persist → load 内容一致(合并视图形状未变)', async () => {
+  stubStorage({});
+  const data = BGTStore.emptyData();
+  data.groups = [BGTStore.normalizeGroup({ id: 'g9', title: '往返', tabs: [{ url: 'https://x.com/' }] })];
+  data.workspaces = [BGTStore.normalizeWorkspace({ id: 'w9', title: 'ws' })];
+  data.records = [BGTStore.makeRecord({ title: 'r', tabs: [BGTStore.makeStoredTab({ url: 'https://y.com/' })] })];
+  await BGTStore.persist(data);
+  const back = await BGTStore.load();
+  assert.deepStrictEqual(back, BGTStore.normalizeData(data));
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

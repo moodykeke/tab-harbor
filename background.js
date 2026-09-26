@@ -658,7 +658,7 @@ async function handleMessage(msg) {
           const group = data.groups.find((g) => g.id === msg.groupId);
           if (!group) return { ok: false, reason: 'not-found' };
           group.title = String(msg.title || '').trim();
-          await BGTStore.persist(data);
+          await BGTStore.persist(data, { groups: true }); // ADR-001:改名只写 bgtGroups+bgtMeta,不重写 records
           return { ok: true, title: group.title };
         });
       case 'renameWorkspace':
@@ -667,7 +667,7 @@ async function handleMessage(msg) {
           const ws = data.workspaces.find((w) => w.id === msg.workspaceId);
           if (!ws) return { ok: false, reason: 'not-found' };
           ws.title = String(msg.title || '').trim();
-          await BGTStore.persist(data);
+          await BGTStore.persist(data, { workspaces: true });
           return { ok: true, title: ws.title };
         });
       case 'cloudTest':
@@ -770,8 +770,10 @@ async function runDailyBackup() {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (changes[BGTStore.STORE_KEY]) {
-    updateBadge(changes[BGTStore.STORE_KEY].newValue);
+  // 分键后(ADR-001):徽章与右键菜单只依赖 groups 集合,听 bgtGroups 即可;
+  // records/settings-only 的写入不再触发无谓的徽章刷新与菜单重建
+  if (changes[BGTStore.GROUPS_KEY]) {
+    updateBadge({ groups: changes[BGTStore.GROUPS_KEY].newValue });
     scheduleMenuRebuild(); // 保持右键菜单里的分组列表最新(防抖,避免频繁重建)
   }
 });

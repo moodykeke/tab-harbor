@@ -502,10 +502,11 @@ export function bindEvents() {
   });
 
   // 外部数据变化(如 Alt+S 快捷键保存、popup/右键菜单保存);
-  // 自己写入的变更通过令牌跳过,避免多余重渲染
+  // 自己写入的变更通过令牌跳过,避免多余重渲染。
+  // 分键后(ADR-001)每次写入必含 bgtMeta,它就是统一的变更信号
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes[BGTStore.STORE_KEY]) return;
-    const next = changes[BGTStore.STORE_KEY].newValue;
+    if (area !== 'local' || !changes[BGTStore.META_KEY]) return;
+    const next = changes[BGTStore.META_KEY].newValue;
     if (BGTStore.isSelfWrite(next && next.updatedAt)) return;
     (async () => {
       try {

@@ -135,11 +135,11 @@
     $('#optActive').checked = !!data.settings.excludeActive;
     $('#optPinned').addEventListener('change', async (e) => {
       data.settings.excludePinned = e.target.checked;
-      await BGTStore.persist(data);
+      await BGTStore.persist(data, { settings: true }); // 只落 meta(ADR-001):settings-only 写不重写任何集合
     });
     $('#optActive').addEventListener('change', async (e) => {
       data.settings.excludeActive = e.target.checked;
-      await BGTStore.persist(data);
+      await BGTStore.persist(data, { settings: true });
     });
 
     // 菜单动作

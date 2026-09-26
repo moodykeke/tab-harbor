@@ -370,7 +370,12 @@ test('storage 变化时更新徽章为分组数', async () => {
   const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
   const data = EMPTY();
   data.groups = [BGTStore.normalizeGroup({ title: 'A', tabs: [] }), BGTStore.normalizeGroup({ title: 'B', tabs: [] })];
+  // ADR-001 后徽章听 bgtGroups;直接写 bgtData(旧键)不再触发,写新键才触发
+  const before = env.callsOf('action.setBadgeText').length;
   await env.chrome.storage.local.set({ bgtData: data });
+  await env.settle(20);
+  assert.strictEqual(env.callsOf('action.setBadgeText').length, before, '写旧键不应再触发徽章');
+  await env.chrome.storage.local.set({ bgtGroups: data.groups });
   await env.settle(20);
   const last = env.callsOf('action.setBadgeText').pop();
   assert.strictEqual(last.args[0].text, '2');
@@ -402,7 +407,8 @@ test('storage 变化立即重建右键菜单(不再依赖 800ms setTimeout)', as
   const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
   const data = EMPTY();
   data.groups = [BGTStore.normalizeGroup({ title: '新组', tabs: [{ url: 'https://a.com/' }] })];
-  await env.chrome.storage.local.set({ bgtData: data });
+  // ADR-001 后菜单重建听 bgtGroups
+  await env.chrome.storage.local.set({ bgtGroups: data.groups });
   // 只等 60ms:旧实现是 setTimeout(800ms),SW 若在窗口内被回收菜单就永远停在旧内容
   await env.settle(60);
   assert.ok(env.callCount('contextMenus.removeAll') >= 1, '应在无计时器的情况下完成重建');

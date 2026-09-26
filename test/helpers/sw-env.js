@@ -299,9 +299,22 @@ function createEnv(opts) {
     createdTabs,
     allTabs,
     focusedWindow,
-    /** 取出 storage 里的 bgtData */
-    data: () => clone(storage.get('bgtData')),
-    setData: (d) => storage.set('bgtData', clone(d)),
+    /** 合并视图(ADR-001 分键后与 store.load 同口径):meta 存在时从四键组装,否则回落旧单键 */
+    data: () => {
+      const meta = storage.get('bgtMeta');
+      if (meta && typeof meta === 'object') {
+        return clone({
+          version: 2,
+          groups: storage.get('bgtGroups') || [],
+          workspaces: storage.get('bgtWorkspaces') || [],
+          records: storage.get('bgtRecords') || [],
+          settings: meta.settings || {},
+          updatedAt: meta.updatedAt,
+        });
+      }
+      return clone(storage.get('bgtData'));
+    },
+    setData: (d) => storage.set('bgtData', clone(d)), // 仍按 v2 单键注入,经 store.load 自动迁移
     callCount: (api) => calls.filter((c) => c.api === api).length,
     callsOf: (api) => calls.filter((c) => c.api === api),
     /** 等异步副作用落地(事件监听器不返回 Promise,只能让出事件循环) */

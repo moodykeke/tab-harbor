@@ -173,8 +173,31 @@
     { id: 'w4', url: 'https://translate.google.com/', title: 'Google 翻译', active: false, pinned: false, favIconUrl: '' },
   ];
 
+  /* 模拟存储与生产同口径(ADR-001):v3 分键落槽位,v2 单键(含演示种子)留给迁移。
+   * 旧实现 set() 只认 bgtData、其余键静默丢弃 —— 那是一次真实的预览层偏差。 */
+  const META_KEY = 'bgtMeta', GROUPS_KEY = 'bgtGroups', WORKSPACES_KEY = 'bgtWorkspaces', RECORDS_KEY = 'bgtRecords';
+
+  function slotName(k) { return 'bgtMock:' + k; }
+  function isBgtKey(k) { return k === 'bgtData' || k.indexOf('bgt') === 0; }
+  function readSlot(k) {
+    const raw = localStorage.getItem(slotName(k));
+    if (raw == null) return undefined;
+    try { return JSON.parse(raw); } catch (e) { return undefined; }
+  }
+
+  /** 组装合并视图(模拟层自有路由用):分键优先,回落 v2 单键 / 演示种子 */
   function readData() {
     try {
+      const meta = readSlot(META_KEY);
+      if (meta && typeof meta === 'object') {
+        return {
+          groups: readSlot(GROUPS_KEY) || [],
+          workspaces: readSlot(WORKSPACES_KEY) || [],
+          records: readSlot(RECORDS_KEY) || [],
+          settings: meta.settings || {},
+          updatedAt: meta.updatedAt,
+        };
+      }
       const raw = localStorage.getItem(LS_KEY);
       if (raw) return JSON.parse(raw);
       // 首次预览且无 v1 数据时,给出演示分组
@@ -184,8 +207,18 @@
       return JSON.parse(JSON.stringify(seed));
     }
   }
+
+  /** 整包写(模拟层自有路由用):落到 v3 分键槽位 */
   function writeData(d) {
-    localStorage.setItem(LS_KEY, JSON.stringify(d));
+    d = d || {};
+    localStorage.setItem(slotName(META_KEY), JSON.stringify({
+      schemaVersion: 3,
+      settings: d.settings || {},
+      updatedAt: d.updatedAt || Date.now(),
+    }));
+    localStorage.setItem(slotName(GROUPS_KEY), JSON.stringify(d.groups || []));
+    localStorage.setItem(slotName(WORKSPACES_KEY), JSON.stringify(d.workspaces || []));
+    localStorage.setItem(slotName(RECORDS_KEY), JSON.stringify(d.records || []));
   }
 
   function resolve(v) {
@@ -276,10 +309,18 @@
         get: function (keys, cb) {
           const out = {};
           const list = keys == null ? [] : Array.isArray(keys) ? keys : [keys];
-          const data = readData();
           list.forEach(function (k) {
-            if (k === 'bgtData') { if (data !== undefined) out[k] = data; }
-            else {
+            if (k === 'bgtData') {
+              // v2 legacy 视图:旧预览数据;两者皆无且也非 v1 时给演示种子,由 store.js 迁移成分键
+              const raw = localStorage.getItem(LS_KEY);
+              if (raw != null) { try { out[k] = JSON.parse(raw); } catch (e) { out[k] = raw; } }
+              else if (readSlot(META_KEY) === undefined && !localStorage.getItem('tabGroups')) {
+                out[k] = JSON.parse(JSON.stringify(seed));
+              }
+            } else if (isBgtKey(k)) {
+              const v = readSlot(k);
+              if (v !== undefined) out[k] = v;
+            } else {
               const raw = localStorage.getItem(k);
               if (raw != null) { try { out[k] = JSON.parse(raw); } catch (e) { out[k] = raw; } }
             }
@@ -287,12 +328,21 @@
           return cb ? (setTimeout(function () { cb(out); }, 0), undefined) : resolve(out);
         },
         set: function (obj, cb) {
-          if (obj && obj.bgtData) writeData(obj.bgtData);
+          Object.keys(obj || {}).forEach(function (k) {
+            const v = obj[k];
+            if (k === 'bgtData') writeData(v); // v2 形状整包写:拆成分键槽位
+            else if (isBgtKey(k)) localStorage.setItem(slotName(k), JSON.stringify(v));
+            else localStorage.setItem(k, JSON.stringify(v));
+          });
           if (cb) setTimeout(cb, 0);
           return resolve(undefined);
         },
         remove: function (keys, cb) {
-          (Array.isArray(keys) ? keys : [keys]).forEach(function (k) { localStorage.removeItem(k); });
+          (Array.isArray(keys) ? keys : [keys]).forEach(function (k) {
+            if (k === 'bgtData') localStorage.removeItem(LS_KEY);
+            else if (isBgtKey(k)) localStorage.removeItem(slotName(k));
+            else localStorage.removeItem(k);
+          });
           if (cb) setTimeout(cb, 0);
           return resolve(undefined);
         },

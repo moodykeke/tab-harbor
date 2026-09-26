@@ -139,7 +139,7 @@
     });
 
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'local' || !changes[BGTStore.STORE_KEY]) return;
+      if (area !== 'local' || !changes[BGTStore.META_KEY]) return; // 分键后 meta 恒随每次写入(ADR-001)
       (async () => {
         try {
           data = await BGTStore.load();
