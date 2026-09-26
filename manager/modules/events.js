@@ -1,7 +1,7 @@
 /**
  * Tab Harbor — events:全部事件绑定(含命令面板与键盘导航)
  */
-import { state, $, $$, h, persist, persistAndRender } from './core.js';
+import { state, $, $$, h, send, persistAndRender, persistAndRenderSoon } from './core.js';
 import { ICONS, SORT_LABELS, THEME_LABELS } from './icons.js';
 import { toast, openMenu } from './ui.js';
 import { render, renderGroups, renderWorkspaces, applySearchLight, structureToken, updateBatchBar, showKbdFocus } from './render.js';

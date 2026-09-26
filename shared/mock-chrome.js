@@ -204,7 +204,13 @@
       update: function (id, props, cb) { const v = {}; if (cb) setTimeout(function () { cb(v); }, 0); return resolve(v); },
     },
     windows: {
-      getLastFocused: function (cb) { const v = { id: 1, tabs: mockWindowTabs }; return cb ? (setTimeout(function () { cb(v); }, 0), undefined) : resolve(v); },
+      // 注意签名:Chrome 允许 getLastFocused(getInfo?, callback?)。调用方传了
+      // {populate:true}(replace 模式需要 cur.tabs),模拟层必须一并接收该参数,
+      // 否则会把 info 对象当成回调 → preview 下开工替换模式直接崩。
+      getLastFocused: function (info, cb) {
+        const v = { id: 1, tabs: mockWindowTabs }; // 恒带 tabs(真实 API 需 populate:true)
+        return typeof cb === 'function' ? (setTimeout(function () { cb(v); }, 0), undefined) : resolve(v);
+      },
       getCurrent: function (cb) { const v = { id: 1, tabs: mockWindowTabs }; return cb ? (setTimeout(function () { cb(v); }, 0), undefined) : resolve(v); },
       create: function (props, cb) { const v = { id: 'new' + Math.floor(Math.random() * 1e4), tabs: [{ id: 'nt' + Math.floor(Math.random() * 1e4) }] }; if (cb) setTimeout(function () { cb(v); }, 0); return resolve(v); },
       getAll: function (q, cb) {

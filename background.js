@@ -260,7 +260,8 @@ async function restoreWorkspace(workspaceId, mode) {
   }
   if (mode === 'replace' || mode === 'current') {
     // 扁平合并进当前(或最后聚焦)窗口;replace 先恢复再清掉原有标签
-    const cur = await chrome.windows.getLastFocused();
+    // populate: true 必需 —— 否则 cur.tabs 为 undefined,'replace' 模式永远清不掉原有标签
+    const cur = await chrome.windows.getLastFocused({ populate: true });
     const oldIds = mode === 'replace' ? (cur.tabs || []).map((t) => t.id) : [];
     for (let i = 0; i < ws.tabs.length; i += 1) {
       await createTab({
@@ -525,7 +526,7 @@ function initOmnibox() {
         if (berth) {
           suggest([{
             content: 'berth:' + berth.berth,
-            description: '<dim>[' + escapeXml(t('泊位 {n}', { n: berth.berth })) + ']</dim> '
+            description: '<dim>[' + escapeXml(tr('泊位 {n}', { n: berth.berth })) + ']</dim> '
               + escapeXml(berth.title) + ' (' + berth.tabs + ')',
           }]);
           return;
@@ -592,7 +593,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           await chrome.tabs.create({ url: chrome.runtime.getURL(BGTStore.MANAGER_PAGE) });
           return { ok: true, fallback: true };
         case 'saveWorkspace':
-          return await saveWorkspace(msg.title, { closeTabs: msg.closeTabs !== false });
+          // allWindows 必须透传:漏传会让"包含全部窗口"静默失效(仅存聚焦窗口)
+          return await saveWorkspace(msg.title, { closeTabs: msg.closeTabs !== false, allWindows: !!msg.allWindows });
         case 'restoreWorkspace':
           return await restoreWorkspace(msg.workspaceId, msg.mode || 'new');
         case 'renameGroup':
