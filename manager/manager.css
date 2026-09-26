@@ -834,3 +834,8 @@
   background: hsl(var(--h, 210), 72%, 55%);
   display: inline-block;
 }
+
+/* ---------------- 本地文件夹 · 知识库入口(Wave 3.5) ---------------- */
+.garden { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 2px; }
+.garden__row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.garden__status { font-size: 12px; color: var(--text-2); word-break: break-all; }

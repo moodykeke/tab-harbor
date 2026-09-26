@@ -9,6 +9,7 @@
   <script src="../shared/i18n.js?v=10"></script>
   <script src="../shared/mock-chrome.js?v=10"></script>
   <script src="../shared/store.js?v=10"></script>
+  <script src="../shared/garden.js?v=10"></script>
 </head>
 
 <body>
@@ -341,6 +342,21 @@
       <p class="set__label">整理规则(按域名整理时生效,每行一条)</p>
       <textarea id="setTidyRules" class="input set__textarea" rows="4"
                 placeholder="github.com => 代码&#10;developer.mozilla.org => 学习"></textarea>
+
+      <div id="gardenSection" hidden>
+        <p class="set__label">本地文件夹 · 知识库入口(导出只写托管区段,永不触碰区段之外)</p>
+        <div class="garden">
+          <div class="garden__row">
+            <button class="btn" id="btnGardenPick" type="button">选择文件夹…</button>
+            <span id="gardenStatus" class="garden__status"></span>
+          </div>
+          <div class="garden__row">
+            <button class="btn" id="btnGardenExportGroups" type="button">导出全部分组(Markdown)</button>
+            <button class="btn" id="btnGardenExportDaily" type="button">写入今日证据段</button>
+          </div>
+          <p class="ws__hint">证据段按日期写入 tab-harbor-YYYY-MM-DD.md,只更新两行标记之间的内容;覆盖前自动留底为 .bak.md。</p>
+        </div>
+      </div>
 
       <p class="set__label">云端备份(WebDAV:坚果云 / Nextcloud / 群晖等)</p>
       <div class="cloud">

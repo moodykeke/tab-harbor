@@ -17,6 +17,7 @@ const ROOT = path.join(__dirname, '..');
 const SUITES = [
   { name: 'Lint(未声明标识符)', file: 'tools/check-globals.js' },
   { name: 'Unit(store 纯函数)', file: 'test/test-store.js' },
+  { name: 'Unit(知识库通道)', file: 'test/garden.js' },
   { name: 'Performance(基准)', file: 'test/perf.js' },
   { name: 'i18n(穷尽式)', file: 'test/i18n.js' },
   { name: 'Integration(链路)', file: 'test/integration.js' },

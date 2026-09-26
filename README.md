@@ -102,6 +102,7 @@
 
 - 原生标签组导入/恢复、右键菜单、omnibox(`harbor` 关键词)、侧边栏需在真实 Chrome 116+ 中使用
   (116 是 `chrome.sidePanel.open()` 的下限,已对照 Chrome 官方 sidePanel 参考核实)
+- **本地知识库出口**(设置 →「本地文件夹」):导出全部分组为 Markdown;**今日证据段**按日期写入 `tab-harbor-YYYY-MM-DD.md` —— 只更新两行托管标记之间的内容(区段外逐字节保留,覆盖前留底 .bak.md)
 - 云端备份为 WebDAV 协议:不支持 OAuth 网盘(如纯网页版 Dropbox);WebDAV 密码以明文存于本机 `chrome.storage.local`,云端副本已剥离密码
 - `dev-server.js`、`test/`、`tools/` 为开发文件。**不要手工压缩打包** —— 用 `node tools/pack.js`:
   它按显式白名单只装入运行时文件,并校验页面引用的资源是否齐全
@@ -162,7 +163,7 @@ better-group-tabs/
 │   └── helpers/sw-env.js  #   内存版 chrome.* 与消息投递
 ├── tools/
 │   ├── pack.js            # 可复现打包(零依赖 ZIP 写入器 + 白名单 + SHA-256)
-│   ├── test-all.js        # 发布门禁:7 套 127 项断言
+│   ├── test-all.js        # 发布门禁:8 套 134 项断言
 │   ├── check-globals.js   # 静态门禁:未声明标识符
 │   ├── make-screenshots.js # 生成商店截图(无头 Chrome + CDP)
 │   └── patches/           # 历史补丁脚本存档(只读,勿运行 —— 见该目录 README)

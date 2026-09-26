@@ -25,7 +25,8 @@ export function openSettings() {
   $('#davUser').value = w.user || '';
   $('#davPass').value = w.pass || '';
   $('#davDir').value = w.dir || '';
-  $('#davAuto').checked = !!w.auto;
+  $('#davAuto').checked = w.auto;
+  bindGarden();
   cloudStatus('idle');
   renderStorageLine();
   renderSnapshots();
@@ -81,6 +82,68 @@ async function ensureCloudPermission(url) {
   } catch (e) {
     return false;
   }
+}
+
+/* ---------------- 本地文件夹 · 知识库入口(Wave 3.5 通道 + WP-3.4 证据段) ---------------- */
+
+let gardenHandle = null;
+
+function gardenStatusText() {
+  const el = $('#gardenStatus');
+  if (el) el.textContent = gardenHandle ? (gardenHandle.name + '/') : tr('未选择文件夹');
+}
+
+/** 特性检测守卫:无 FSA(旧浏览器/预览)时整节隐藏,不留死按钮 */
+function bindGarden() {
+  const section = $('#gardenSection');
+  if (!section || typeof window === 'undefined' || !window.showDirectoryPicker || !window.BGTGarden) return;
+  section.hidden = false;
+  const pick = $('#btnGardenPick');
+  if (pick.dataset.bound) { gardenStatusText(); return; }
+  pick.dataset.bound = '1';
+  pick.addEventListener('click', async () => {
+    const h = await BGTGarden.pickGarden();
+    if (!h) return;
+    gardenHandle = h;
+    await BGTGarden.saveGardenHandle(h); // 句柄存 IndexedDB,下次会话恢复(权限需再确认)
+    gardenStatusText();
+  });
+  $('#btnGardenExportGroups').addEventListener('click', exportGroupsToGarden);
+  $('#btnGardenExportDaily').addEventListener('click', exportDailyToGarden);
+  BGTGarden.loadGardenHandle().then((h) => { if (h) { gardenHandle = h; } }).catch(() => {});
+  gardenStatusText();
+}
+
+async function ensureGarden() {
+  if (!gardenHandle) { toast(tr('请先选择文件夹'), true); return false; }
+  if (!(await BGTGarden.ensurePermission(gardenHandle))) { toast(tr('文件夹权限未授予'), true); return false; }
+  return true;
+}
+
+async function exportGroupsToGarden() {
+  if (!(await ensureGarden())) return;
+  const dir = await gardenHandle.getDirectoryHandle('groups', { create: true });
+  for (const g of state.data.groups) {
+    await BGTGarden.writeFile(dir, BGTGarden.safeFileName(g.title) + '.md', BGTGarden.groupMarkdown(g), false);
+  }
+  toast(tr('已导出 {n} 个分组到文件夹', { n: state.data.groups.length }));
+}
+
+async function exportDailyToGarden() {
+  if (!(await ensureGarden())) return;
+  const idx = BGTStore.buildUrlIdentity(state.data);
+  const lineageOf = (url) => {
+    const e = idx.get(BGTStore.normalizeUrl(url).key);
+    const vs = e ? BGTStore.sourceVersions(e) : [];
+    return vs.length > 1 ? 'v' + vs.length : '';
+  };
+  const { day, body } = BGTGarden.buildDailyEvidence(state.data, BGTGarden.dayKeyOf(Date.now()), lineageOf);
+  const name = 'tab-harbor-' + day + '.md';
+  let existing = '';
+  try { existing = await BGTGarden.readTextFile(gardenHandle, name); } catch (e) { /* 首次创建 */ }
+  const r = BGTGarden.applyManagedSection(existing, body); // 只动两标记之间,标记外逐字节保留
+  await BGTGarden.writeFile(gardenHandle, name, r.content, true); // 覆盖前留底 .bak.md
+  toast(r.replaced ? tr('证据段已更新(区段之外未动,已留底 .bak.md)') : tr('证据段已创建'));
 }
 
 export async function saveSettings() {
