@@ -77,7 +77,8 @@
     };
   }
 
-  /** 摘录(Wave 3.1):右键选中的文字,挂在来源页面的那次观测上 —— 证据层,只增不改 */
+  /** 摘录(Wave 3.1):右键选中的文字,挂在来源页面的那次观测上 —— 证据层,只增不改。
+   *  2.1b:workspaceId 在采集瞬间从"活窗口↔项目绑定"冻结而来(未绑定的窗口为 undefined)。 */
   function normalizeExcerpt(raw) {
     const x = raw && typeof raw === 'object' ? raw : {};
     return {
@@ -86,6 +87,7 @@
       text: String(x.text || '').trim().slice(0, EXCERPT_TEXT_MAX),
       tabTitle: typeof x.tabTitle === 'string' ? x.tabTitle : '',
       savedAt: Number(x.savedAt) || Date.now(),
+      workspaceId: (typeof x.workspaceId === 'string' && x.workspaceId) ? x.workspaceId : undefined,
     };
   }
 
@@ -661,7 +663,7 @@
     for (const g of data.groups || []) { fpField('G'); fpField(g.id); fpField(g.title); fpField(g.createdAt); fpTabs(g.tabs); }
     for (const w of data.workspaces || []) { fpField('W'); fpField(w.id); fpField(w.title); fpField(w.createdAt); fpField(w.lastEventId); fpTabs(w.tabs); }
     for (const r of data.records || []) { fpField('R'); fpField(r.id); fpField(r.title); fpField(r.createdAt); fpTabs(r.tabs); }
-    for (const x of data.excerpts || []) { fpField('X'); fpField(x.id); fpField(x.url); fpField(x.text); fpField(x.tabTitle); fpField(x.savedAt); }
+    for (const x of data.excerpts || []) { fpField('X'); fpField(x.id); fpField(x.url); fpField(x.text); fpField(x.tabTitle); fpField(x.savedAt); fpField(x.workspaceId); }
     return fp0 + ',' + fp1;
   }
 

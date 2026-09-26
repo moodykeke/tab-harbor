@@ -276,6 +276,46 @@ async function saveWorkspace(title, opts) {
 
 /** 开工:把工作区恢复为新窗口 / 当前窗口 / 替换当前窗口,固定标签原样保留。
  *  多窗口工作区:new 模式逐窗口还原;'current'/'replace' 模式扁平合并进当前窗口。 */
+
+/* ---------------- 2.1b:活窗口 ↔ 项目绑定 ----------------
+ * 绑定住 chrome.storage.session:跨 SW 回收存活、浏览器关闭即消失 ——
+ * "这个窗口正在做哪个项目"是会话事实,不是历史事实。
+ * 摘录在采集瞬间把归属冻结进自身(excerpt.workspaceId),此后与会话无关;
+ * 绑定是事实,名字只是显示 —— 不再从名字猜意图。 */
+const WS_BINDING_KEY = 'bgtWindowBindings'; // { [windowId]: workspaceId }
+
+async function bindWindowToWorkspace(windowId, workspaceId) {
+  if (!windowId || !workspaceId || !chrome.storage || !chrome.storage.session) return;
+  try {
+    const res = await chrome.storage.session.get(WS_BINDING_KEY);
+    const map = (res && res[WS_BINDING_KEY]) || {};
+    map[String(windowId)] = workspaceId;
+    await chrome.storage.session.set({ [WS_BINDING_KEY]: map });
+  } catch (e) { /* 绑定失败不影响开工 */ }
+}
+
+async function lookupWindowBinding(windowId) {
+  if (windowId == null || !chrome.storage || !chrome.storage.session) return null;
+  try {
+    const res = await chrome.storage.session.get(WS_BINDING_KEY);
+    const map = (res && res[WS_BINDING_KEY]) || {};
+    return map[String(windowId)] || null;
+  } catch (e) { return null; }
+}
+
+if (chrome.windows && chrome.windows.onRemoved) {
+  chrome.windows.onRemoved.addListener((windowId) => {
+    // 窗口关闭即解除绑定(会话存储随浏览器消亡,这里只是即时卫生)
+    chrome.storage.session.get(WS_BINDING_KEY).then((res) => {
+      const map = (res && res[WS_BINDING_KEY]) || {};
+      if (map[String(windowId)]) {
+        delete map[String(windowId)];
+        chrome.storage.session.set({ [WS_BINDING_KEY]: map });
+      }
+    }).catch(() => {});
+  });
+}
+
 async function restoreWorkspace(workspaceId, mode) {
   const data = await BGTStore.load();
   const ws = data.workspaces.find((w) => w.id === workspaceId);
@@ -303,6 +343,7 @@ async function restoreWorkspace(workspaceId, mode) {
     if (restored && oldIds.length) {
       try { await chrome.tabs.remove(oldIds); } catch (e) { /* 可能已关 */ }
     }
+    await bindWindowToWorkspace(cur.id, workspaceId); // 2.1b:接收标签的窗口即属于该项目
   } else if (windows.length > 1) {
     // 多窗口:逐窗口还原
     for (let wi = 0; wi < windows.length; wi += 1) {
@@ -314,6 +355,7 @@ async function restoreWorkspace(workspaceId, mode) {
         await chrome.tabs.update(win.tabs[0].id, { pinned: true });
       }
       restored += 1;
+      await bindWindowToWorkspace(win.id, workspaceId); // 2.1b:逐窗口绑定
       for (const t of group.tabs.slice(1)) {
         await createTab({ windowId: win.id, url: t.url, pinned: t.pinned, active: false });
       }
@@ -325,6 +367,7 @@ async function restoreWorkspace(workspaceId, mode) {
       await chrome.tabs.update(win.tabs[0].id, { pinned: true });
     }
     restored = 1;
+    await bindWindowToWorkspace(win.id, workspaceId); // 2.1b
     for (const t of ws.tabs.slice(1)) {
       await createTab({ windowId: win.id, url: t.url, pinned: t.pinned, active: false });
     }
@@ -551,16 +594,19 @@ async function onContextMenuClicked(info, tab) {
   } else if (String(info.menuItemId).startsWith('g:')) {
     acted = await addTabToGroup(String(info.menuItemId).slice(2), tab);
   } else if (info.menuItemId === 'bgt-excerpt') {
-    // 摘录走 SW 串行队列,只写 bgtExcerpts+meta(分键收益与写隔离由测试看守)
+    // 摘录走 SW 串行队列,只写 bgtExcerpts+meta(分键收益与写隔离由测试看守);
+    // 2.1b:采集瞬间冻结归属 —— 绑定中的窗口里的摘录,记下它属于哪个项目
     acted = await BGTStore.mutate(async () => {
       const text = String(info.selectionText || '').trim();
       if (!text || !info.pageUrl) return false;
+      const projectId = await lookupWindowBinding(tab && tab.windowId);
       const data = await BGTStore.load();
       data.excerpts.unshift(BGTStore.normalizeExcerpt({
         url: info.pageUrl,
         text,
         tabTitle: (tab && tab.title) || '',
         savedAt: Date.now(),
+        workspaceId: projectId || undefined,
       }));
       await BGTStore.persist(data, { excerpts: true });
       return true;

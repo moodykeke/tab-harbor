@@ -320,6 +320,44 @@ test('2.1a 「新建一个」→ 允许重名;N>1 时列候选,updateId 指名�
   assert.strictEqual(env.data().workspaces.length, 2, '指名更新不新建');
 });
 
+test('2.1b 开工即绑定:绑定窗口里的摘录自动归属该项目(采集瞬间冻结)', async () => {
+  const data = EMPTY();
+  data.workspaces = [BGTStore.normalizeWorkspace({ id: 'w1', title: '项目A', tabs: [{ url: 'https://a.com/x' }] })];
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: data } });
+  // 开工到当前窗口(mode current → getLastFocused = 窗口 1)→ 窗口 1 绑定项目 w1
+  const r = await env.send({ action: 'restoreWorkspace', workspaceId: 'w1', mode: 'current' });
+  assert.strictEqual(r.ok, true);
+  await env.fire('contextMenus.onClicked',
+    { menuItemId: 'bgt-excerpt', selectionText: '在项目里抓到的结论', pageUrl: 'https://a.com/x' },
+    { id: 7, windowId: 1, url: 'https://a.com/x', title: '项目页' });
+  await env.settle(60);
+  const d = env.data();
+  assert.strictEqual(d.excerpts.length, 1);
+  assert.strictEqual(d.excerpts[0].workspaceId, 'w1', '绑定中的窗口里采集的摘录应携带项目归属');
+});
+
+test('2.1b 未绑定窗口的摘录不携带归属(对照组;窗口关闭即解绑)', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  await env.fire('contextMenus.onClicked',
+    { menuItemId: 'bgt-excerpt', selectionText: '闲逛时抓的', pageUrl: 'https://b.com/y' },
+    { id: 8, windowId: 1, url: 'https://b.com/y', title: '随便看看' });
+  await env.settle(60);
+  assert.strictEqual(env.data().excerpts[0].workspaceId, undefined, '从未开工的窗口不应有归属');
+
+  // 绑定后关闭窗口 → 解绑:再采一条(模拟另一上下文)不携带旧归属
+  const data2 = EMPTY();
+  data2.workspaces = [BGTStore.normalizeWorkspace({ id: 'w1', title: '项目A', tabs: [{ url: 'https://a.com/x' }] })];
+  const env2 = createEnv({ windows: [W1([])], storage: { bgtData: data2 } });
+  await env2.send({ action: 'restoreWorkspace', workspaceId: 'w1', mode: 'current' });
+  await env2.fire('windows.onRemoved', 1);
+  await env2.settle(20);
+  await env2.fire('contextMenus.onClicked',
+    { menuItemId: 'bgt-excerpt', selectionText: '窗口已关', pageUrl: 'https://a.com/x' },
+    { id: 9, windowId: 1, url: 'https://a.com/x', title: 'T' });
+  await env2.settle(60);
+  assert.strictEqual(env2.data().excerpts[0].workspaceId, undefined, '窗口关闭后绑定应解除');
+});
+
 test('harness:setData 在首次 persist 之后仍然生效(写 v3 分键,不被读路径忽略)', async () => {
   const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
   await env.send({ action: 'saveSettings', patch: { theme: 'dark' } }); // 产生首次 persist,bgtMeta 就位

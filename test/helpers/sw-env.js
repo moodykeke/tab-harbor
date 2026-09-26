@@ -43,6 +43,7 @@ function createEnv(opts) {
   const listeners = new Map();
   const calls = [];
   const storage = new Map(Object.entries(clone(opts.storage) || {}));
+  const sessionStore = new Map(); // chrome.storage.session(2.1b 绑定用,与 local 分离)
 
   const record = (api, args) => { calls.push({ api, args: clone(args) }); };
   const on = (key, fn) => {
@@ -115,6 +116,27 @@ function createEnv(opts) {
       onStartup: { addListener: (fn) => on('runtime.onStartup', fn) },
     },
     storage: {
+      session: {
+        // 2.1b:会话级存储(活窗口↔项目绑定)。与生产同语义:跨 SW 回收存活,测试内即内存
+        get: (keys, cb) => {
+          record('storage.session.get', [keys]);
+          const out = {};
+          for (const k of (keys == null ? Array.from(sessionStore.keys()) : Array.isArray(keys) ? keys : [keys])) {
+            if (sessionStore.has(k)) out[k] = clone(sessionStore.get(k));
+          }
+          return cb ? (cb(out), undefined) : Promise.resolve(out);
+        },
+        set: (obj, cb) => {
+          record('storage.session.set', [Object.keys(obj || {})]);
+          for (const [k, v] of Object.entries(obj || {})) sessionStore.set(k, clone(v));
+          return cb ? (cb(), undefined) : Promise.resolve();
+        },
+        remove: (keys, cb) => {
+          record('storage.session.remove', [keys]);
+          for (const k of (Array.isArray(keys) ? keys : [keys])) sessionStore.delete(k);
+          return cb ? (cb(), undefined) : Promise.resolve();
+        },
+      },
       local: {
         get: localGet,
         set: localSet,
@@ -171,6 +193,7 @@ function createEnv(opts) {
       update: () => Promise.resolve(),
     },
     windows: {
+      onRemoved: { addListener: (fn) => on('windows.onRemoved', fn) },
       getAll: (q) => {
         record('windows.getAll', [q]);
         return Promise.resolve(clone(world.windows.map((w) => (q && q.populate ? w : { id: w.id, focused: w.focused }))));

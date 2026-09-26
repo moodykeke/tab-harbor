@@ -166,6 +166,7 @@
   '保存云端配置失败': 'Failed to save cloud config',
   '把选中文字存为摘录': 'Save selection as excerpt',
   '{date} · 摘录': '{date} · Excerpt',
+  '{date} · 摘录 · {project}': '{date} · Excerpt · {project}',
   '已复制摘录全文': 'Excerpt text copied',
   '复制失败': 'Copy failed',
   '未授予对该服务器的访问权限': 'Permission for this server was not granted',

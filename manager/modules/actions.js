@@ -267,7 +267,8 @@ export function openDupMenu(contextGroup, tab, anchor) {
   const occurrences = identity.occurrences;
   if (identity.seenCount <= 1) { toast(tr('该网址只保存过 1 次')); return; }
   openMenu(anchor, occurrences.map((o) => ({
-    label: tr('{date} · {group}', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') }),
+    label: o.source === 'excerpt' ? excerptOccurrenceLabel(o)
+      : tr('{date} · {group}', { date: fmtDate(o.at), group: o.refTitle || tr('未命名分组') }),
     icon: (contextGroup && o.source === 'group' && o.refId === contextGroup.id) ? ICONS.check
       : o.source === 'group' ? ICONS.tabs
       : o.source === 'record' ? ICONS.list
@@ -280,6 +281,15 @@ export function openDupMenu(contextGroup, tab, anchor) {
       else if (o.source === 'excerpt') copyExcerptText(o.refId);
     },
   })));
+}
+
+/** 摘录条目的标签:归属项目在采集瞬间冻结(2.1b),有归属就显示项目名 */
+function excerptOccurrenceLabel(o) {
+  const x = state.data.excerpts.find((e) => e.id === o.refId);
+  const ws = x && x.workspaceId ? state.data.workspaces.find((w) => w.id === x.workspaceId) : null;
+  return ws
+    ? tr('{date} · 摘录 · {project}', { date: fmtDate(o.at), project: ws.title || tr('未命名') })
+    : tr('{date} · 摘录', { date: fmtDate(o.at) });
 }
 
 /** 摘录条目的动作:复制全文(摘录没有"可跳转的目的地",复制是它的自然动作) */
