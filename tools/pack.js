@@ -51,7 +51,7 @@ const SHIP = [
 /** 审核包额外包含:文档 + 测试 + 工具 + 上架素材(让审核者可自行复现全部测试与截图) */
 const REVIEW_EXTRA = [
   'README.md', 'ARCHITECTURE.md', 'CHANGELOG.md', '提交说明.md',
-  'CHROMEWEBSTORE.md', 'PRIVACY.md',
+  'CHROMEWEBSTORE.md', 'PRIVACY.md', 'DEV-HANDBOOK.md',
   'test', 'tools', 'store-assets',
 ];
 
