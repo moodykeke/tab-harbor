@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Tab Harbor · Tab Harbor"
+  },
+  "extDesc": {
+    "message": "A harbor for your tabs: save and restore groups & workspaces, tidy by domain, command palette, crash snapshots and WebDAV cloud backup. All data stays local."
+  },
+  "cmdSaveCurrent": {
+    "message": "Save all tabs of the current window"
+  },
+  "cmdSaveAll": {
+    "message": "Save tabs of all windows"
+  },
+  "cmdSaveWorkspace": {
+    "message": "Clock out: save the current window as a workspace and close its tabs"
+  }
+}

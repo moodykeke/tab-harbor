@@ -1,0 +1,17 @@
+{
+  "extName": {
+    "message": "Tab Harbor · 标签港湾"
+  },
+  "extDesc": {
+    "message": "标签页的避风港:一键保存与恢复分组、工作区、按域名整理、命令面板、崩溃快照与云端备份。数据仅存本地。"
+  },
+  "cmdSaveCurrent": {
+    "message": "保存当前窗口的全部标签页"
+  },
+  "cmdSaveAll": {
+    "message": "保存所有窗口的标签页"
+  },
+  "cmdSaveWorkspace": {
+    "message": "收工:把当前窗口存为工作区并关闭标签"
+  }
+}

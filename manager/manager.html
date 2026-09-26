@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
+  <title>Tab Harbor · 标签港湾</title>
+  <link rel="stylesheet" href="../styles/base.css?v=10">
+  <link rel="stylesheet" href="manager.css?v=10">
+  <script src="../shared/i18n.js?v=10"></script>
+  <script src="../shared/mock-chrome.js?v=10"></script>
+  <script src="../shared/store.js?v=10"></script>
+</head>
+
+<body>
+  <div class="app">
+    <!-- ============ 侧边栏 ============ -->
+    <aside class="side">
+      <div class="brand">
+        <span class="brand__logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M10.5 3v8H4.8L10.5 3Z"/><path d="M13 5.5V11h4.6L13 5.5Z"/><path d="M4 14h16l-2.4 3.6H6.4L4 14Z"/></svg>
+        </span>
+        <div class="brand__text">
+          <strong>Tab Harbor</strong>
+          <span>标签港湾 · 分组管理</span>
+        </div>
+      </div>
+
+      <button class="btn btn--primary btn--block" id="btnNewGroup">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        新建分组
+      </button>
+
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="searchInput" class="search__input" type="text" placeholder="搜索分组、标题或网址…" autocomplete="off">
+      </div>
+
+      <div class="stats">
+        <div class="stat"><b id="statGroups">0</b><span>分组</span></div>
+        <div class="stat"><b id="statTabs">0</b><span>标签</span></div>
+        <div class="stat"><b id="statWorkspaces">0</b><span>工作区</span></div>
+      </div>
+
+      <nav class="side-nav">
+        <p class="side-nav__label">快捷操作</p>
+        <button class="side-nav__item" id="btnSaveWindow">
+          <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M12 9v6M9 12h6"/></svg>
+          保存当前窗口 <kbd>Alt+S</kbd>
+        </button>
+        <button class="side-nav__item" id="btnSaveAllWindows">
+          <svg viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="11" rx="2"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4H19a2 2 0 0 1 2 2v8.5a1.5 1.5 0 0 1-1.5 1.5H16"/></svg>
+          保存全部窗口
+        </button>
+        <button class="side-nav__item" id="btnClockOut">
+          <svg viewBox="0 0 24 24"><path d="M4 8h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M4 13h16"/></svg>
+          收工 · 存为工作区
+        </button>
+        <button class="side-nav__item" id="btnImportNative">
+          <svg viewBox="0 0 24 24"><path d="M12 3v10m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          导入原生分组
+        </button>
+        <button class="side-nav__item" id="btnTidy">
+          <svg viewBox="0 0 24 24"><path d="M4 6h10M4 12h7M4 18h4"/><path d="m16 14 2 2 4-4"/></svg>
+          按域名整理…
+        </button>
+        <button class="side-nav__item" id="btnDupStats">
+          <svg viewBox="0 0 24 24"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg>
+          重复与相似洞察
+        </button>
+        <button class="side-nav__item" id="btnImport">
+          <svg viewBox="0 0 24 24"><path d="M12 4v10m0 0 4-4m-4 4-4-4"/><path d="M5 18h14"/></svg>
+          导入备份
+        </button>
+        <button class="side-nav__item" id="btnExport">
+          <svg viewBox="0 0 24 24"><path d="M12 14V4m0 0 4 4m-4-4L8 8"/><path d="M5 18h14"/></svg>
+          导出备份
+        </button>
+      </nav>
+
+      <div class="side__foot">
+        <button class="side-nav__item" id="themeBtn" type="button" title="切换外观主题">
+          <svg viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1 1 10.5 4 6.5 6.5 0 0 0 20 13.5Z"/></svg>
+          <span id="themeLabel">外观:跟随系统</span>
+        </button>
+        <button class="side-nav__item" id="btnSettings">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.3 1a7 7 0 0 0-2.1-1.3L14 3h-4l-.5 2.5a7 7 0 0 0-2.1 1.3l-2.3-1-2 3.5 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 2.1 1.3L10 21h4l.5-2.5a7 7 0 0 0 2.1-1.3l2.3 1 2-3.5-2-1.5c.06-.4.1-.8.1-1.2Z"/></svg>
+          设置
+        </button>
+        <p class="version">Tab Harbor v3.11.2 · 数据仅存本地</p>
+      </div>
+    </aside>
+
+    <!-- ============ 主区域 ============ -->
+    <main class="main">
+      <div class="viewbar" role="tablist">
+        <button class="viewbar__btn active" id="viewGroups" type="button" role="tab">分组</button>
+        <button class="viewbar__btn" id="viewWorkspaces" type="button" role="tab">工作区<span id="viewWsCount" hidden></span></button>
+        <button class="viewbar__btn" id="viewTimeline" type="button" role="tab" title="按天浏览保存历史">时间轴</button>
+      </div>
+
+      <!-- 首次引导卡 -->
+      <div class="welcome" id="welcomeCard" hidden>
+        <p class="welcome__title">欢迎使用 Tab Harbor · 标签港湾</p>
+        <ol class="welcome__steps">
+          <li><b>保存</b> —— 点击「保存当前窗口」,把杂乱标签页收进港湾(快捷键 <kbd>Alt+S</kbd>)</li>
+          <li><b>整理</b> —— 拖拽分组、按域名整理、置顶常用分组</li>
+          <li><b>收工</b> —— 下班前「存为工作区」并关闭标签,明天一键开工</li>
+        </ol>
+        <div class="welcome__actions">
+          <button class="btn btn--primary" id="btnWelcomeSave" type="button">第一步:保存当前窗口标签</button>
+          <button class="btn" id="btnWelcomeDismiss" type="button">知道了,不再显示</button>
+        </div>
+      </div>
+
+      <header class="main__head">
+        <div>
+          <h1 class="main__title" id="mainTitle">全部分组</h1>
+          <p class="main__sub" id="mainSub"></p>
+        </div>
+        <div class="main__tools">
+          <button class="btn btn--primary" id="btnClockOutTop" type="button" hidden>收工 · 保存当前窗口</button>
+          <button class="btn" id="btnArchived" type="button" title="显示或隐藏已归档分组">显示归档</button>
+          <button class="btn" id="btnToggleAll" type="button" title="折叠或展开全部分组" hidden>全部折叠</button>
+          <button class="btn" id="sortBtn" type="button" title="排序方式">
+            <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M7 12h10M10 17h4"/></svg>
+            <span id="sortLabel">手动排序</span>
+            <svg class="btn__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="groups" id="groupList"></div>
+      <div class="groups" id="wsList" hidden></div>
+      <div id="timelineList" hidden></div>
+      <div class="empty" id="wsEmpty" hidden>
+        <p class="empty__title">还没有工作区</p>
+        <p class="empty__desc">「收工」把当前窗口整体存为一个工作区并关闭标签;「开工」一键恢复,固定标签原样保留。</p>
+        <button class="btn btn--primary" id="btnWsEmptyClock">收工 · 保存当前窗口</button>
+      </div>
+
+      <div class="empty" id="emptyState" hidden>
+        <svg class="empty__art" viewBox="0 0 120 90" fill="none">
+          <rect x="18" y="26" width="66" height="46" rx="7" fill="var(--surface-2)"/>
+          <rect x="30" y="16" width="66" height="46" rx="7" fill="var(--surface)" stroke="var(--border-strong)"/>
+          <rect x="30" y="16" width="66" height="12" rx="7" fill="var(--primary-soft)"/>
+          <circle cx="38" cy="22" r="2.4" fill="var(--primary)"/>
+          <circle cx="46" cy="22" r="2.4" fill="var(--primary)" opacity=".45"/>
+          <rect x="38" y="36" width="42" height="5" rx="2.5" fill="var(--border-strong)"/>
+          <rect x="38" y="47" width="30" height="5" rx="2.5" fill="var(--border)"/>
+          <circle cx="92" cy="62" r="12" fill="var(--grad)" opacity=".9"/>
+          <path d="M92 56v12M86 62h12" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        <p class="empty__title" id="emptyTitle">港湾还是空的</p>
+        <p class="empty__desc" id="emptyDesc">点击下方按钮,点击下方按钮,把当前窗口的标签页一键收进港湾。</p>
+        <button class="btn btn--primary" id="btnEmptySave">保存当前窗口标签</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============ 批量操作条 ============ -->
+  <div class="batchbar" id="batchBar" hidden>
+    <span class="batchbar__count" id="batchCount">已选 0 组</span>
+    <button class="btn" id="batchAll" type="button">全选</button>
+    <button class="btn" id="batchMerge" type="button" title="把所选分组的标签合并到第一个所选分组">合并</button>
+    <button class="btn" id="batchExport" type="button">导出</button>
+    <button class="btn btn--danger" id="batchDelete" type="button">删除</button>
+    <button class="btn" id="batchCancel" type="button">取消</button>
+  </div>
+
+  <!-- ============ 选择性恢复对话框 ============ -->
+  <dialog id="restoreDialog">
+    <div class="dialog__head"><span id="restoreTitle">选择要恢复的标签</span></div>
+    <div class="dialog__body">
+      <div class="restore__tools">
+        <button class="btn" id="restoreCheckAll" type="button">全选</button>
+        <button class="btn" id="restoreInvert" type="button">反选</button>
+      </div>
+      <div id="restoreTabs" class="restore__list"></div>
+      <label class="restore__mode">
+        恢复方式
+        <select id="restoreMode" class="input">
+          <option value="current">当前窗口(后台)</option>
+          <option value="current-fg">当前窗口(前台)</option>
+          <option value="new">新窗口</option>
+          <option value="native">当前窗口 · 原生标签组</option>
+        </select>
+      </label>
+    </div>
+    <div class="dialog__foot">
+      <button class="btn" id="restoreCancel">取消</button>
+      <button class="btn btn--primary" id="restoreOk">恢复</button>
+    </div>
+  </dialog>
+
+  <!-- ============ 命令面板 (Ctrl+K) ============ -->
+  <dialog id="paletteDialog">
+    <div class="palette">
+      <input id="paletteInput" class="palette__input" type="text"
+             placeholder="搜索分组、标签,或输入命令(新建分组 / 保存 / 整理 / 设置)…" autocomplete="off">
+      <div id="paletteList" class="palette__list"></div>
+    </div>
+  </dialog>
+
+  <!-- ============ 快捷键帮助 ============ -->
+  <dialog id="helpDialog">
+    <div class="dialog__head">
+      键盘快捷键
+      <button class="iconbtn" id="helpClose" title="关闭">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dialog__body">
+      <table class="help">
+        <tr><td><kbd>Ctrl</kbd> + <kbd>K</kbd></td><td>命令面板(搜索并直达任何操作)</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>S</kbd></td><td>保存当前窗口标签</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd></td><td>保存全部窗口</td></tr>
+        <tr><td><kbd>/</kbd> 或 <kbd>Ctrl</kbd> + <kbd>F</kbd></td><td>聚焦搜索</td></tr>
+        <tr><td><kbd>N</kbd></td><td>新建分组</td></tr>
+        <tr><td><kbd>?</kbd></td><td>打开本帮助</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>关闭菜单 / 清空搜索</td></tr>
+      </table>
+    </div>
+  </dialog>
+
+  <!-- ============ 收工对话框 ============ -->
+  <dialog id="wsDialog">
+    <div class="dialog__head">收工 · 存为工作区</div>
+    <div class="dialog__body">
+      <label class="ws__field">
+        工作区名称
+        <input id="wsName" class="input" type="text" placeholder="例如:项目 A" autocomplete="off" maxlength="40">
+      </label>
+      <label class="checkbox set__item"><input type="checkbox" id="wsCloseTabs" checked> 保存后关闭这些标签页(下次一键开工)</label>
+      <label class="checkbox set__item"><input type="checkbox" id="wsAllWindows"> 包含全部窗口(多显示器各存一个窗口)</label>
+      <p class="ws__hint">同名工作区会覆盖更新,适合每天重复使用。</p>
+    </div>
+    <div class="dialog__foot">
+      <button class="btn" id="wsCancel">取消</button>
+      <button class="btn btn--primary" id="wsOk">收工</button>
+    </div>
+  </dialog>
+
+  <!-- ============ 当时现场(工作记录详情 / 回到那一刻) ============ -->
+  <dialog id="recordDialog">
+    <div class="dialog__head">
+      <span id="recTitle">当时现场</span>
+      <button class="iconbtn" id="recClose" title="关闭">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dialog__body">
+      <p class="rec-diff-summary" id="recDiffSummary"></p>
+      <p class="rec-section-label" id="recAddedLabel" hidden></p>
+      <div id="recAddedList"></div>
+      <p class="rec-section-label" id="recRemovedLabel" hidden></p>
+      <div id="recRemovedList"></div>
+      <p class="rec-section-label" id="recTabsLabel"></p>
+      <div id="recTabsList" class="dup__list"></div>
+    </div>
+    <div class="dialog__foot">
+      <button class="btn" id="recToGroup" type="button" title="把当时的标签存为一个收藏分组">转为分组</button>
+      <button class="btn" id="recRestoreFull" type="button" title="新窗口恢复全部标签">完整恢复</button>
+      <button class="btn btn--primary" id="recResume" type="button" title="只打开当前没有的标签,不打断现场">续航恢复</button>
+    </div>
+  </dialog>
+
+  <!-- ============ 智能去重(保存前检查) ============ -->
+  <dialog id="dedupDialog">
+    <div class="dialog__head">保存前检查</div>
+    <div class="dialog__body">
+      <p class="confirm__text" id="dedupText"></p>
+    </div>
+    <div class="dialog__foot">
+      <button class="btn" id="dedupCancel">取消</button>
+      <button class="btn" id="dedupAll">全部保存</button>
+      <button class="btn btn--primary" id="dedupNewOnly">仅存新增</button>
+    </div>
+  </dialog>
+
+  <!-- ============ 重复统计对话框 ============ -->
+  <dialog id="dupDialog">
+    <div class="dialog__head">
+      重复与相似洞察
+      <button class="iconbtn" id="dupClose" title="关闭">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dialog__body">
+      <p class="dup__summary" id="dupSummary"></p>
+      <div id="dupList" class="dup__list"></div>
+      <p class="rec-section-label" style="margin-top:16px">高频域名(洞察 → 规则)</p>
+      <div id="hostList" class="dup__list"></div>
+      <p class="rec-section-label" style="margin-top:16px">相似分组(重叠 ≥80% 时建议合并)</p>
+      <div id="similarList" class="dup__list"></div>
+    </div>
+  </dialog>
+
+  <!-- ============ 设置对话框 ============ -->
+  <dialog id="settingsDialog">
+    <div class="dialog__head">
+      设置
+      <button class="iconbtn" id="settingsClose" title="关闭">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dialog__body">
+      <div class="datacenter" id="dataCenter">
+        <p class="dc__title">你的数据</p>
+        <div class="dc__row">
+          <span class="dc__dot dc__dot--ok"></span><b>本机</b>
+          <span class="dc__detail" id="dcLocalDetail">统计中…</span>
+        </div>
+        <div class="dc__row">
+          <span class="dc__dot" id="dcCloudDot"></span><b>WebDAV</b>
+          <span class="dc__detail" id="dcCloudDetail">检查中…</span>
+        </div>
+        <div class="dc__row">
+          <span class="dc__dot dc__dot--off"></span><b>第三方服务器</b>
+          <span class="dc__detail">从未 · 无账号体系 · 无遥测</span>
+        </div>
+        <div class="dc__actions">
+          <button class="btn" id="btnVerifyBackup" type="button">验证最新备份</button>
+          <span class="dc__verify" id="verifyResult"></span>
+        </div>
+      </div>
+      <p class="set__label">保存</p>
+      <label class="checkbox set__item"><input type="checkbox" id="setCloseSaved"> 保存后关闭已保存的标签页</label>
+      <label class="checkbox set__item"><input type="checkbox" id="setOpenManager"> 保存后打开管理页</label>
+      <label class="checkbox set__item"><input type="checkbox" id="setDedupe"> 忽略重复网址</label>
+      <label class="checkbox set__item"><input type="checkbox" id="setSkipSpecial"> 忽略浏览器特殊页面(chrome:// 等)</label>
+      <label class="checkbox set__item"><input type="checkbox" id="setAutoRules"> 保存时自动套用整理规则(按域名分流到对应分组)</label>
+
+      <p class="set__label">恢复</p>
+      <label class="checkbox set__item"><input type="checkbox" id="setDeleteOnRestore"> 恢复分组后删除该分组</label>
+
+      <p class="set__label">通用</p>
+      <label class="checkbox set__item"><input type="checkbox" id="setConfirmDelete"> 删除分组前需要确认</label>
+      <label class="checkbox set__item"><input type="checkbox" id="setAutoSnapshot"> 每 30 分钟快照打开中的标签(崩溃恢复)</label>
+
+      <p class="set__label">整理规则(按域名整理时生效,每行一条)</p>
+      <textarea id="setTidyRules" class="input set__textarea" rows="4"
+                placeholder="github.com => 代码&#10;developer.mozilla.org => 学习"></textarea>
+
+      <p class="set__label">云端备份(WebDAV:坚果云 / Nextcloud / 群晖等)</p>
+      <div class="cloud">
+        <input id="davUrl" class="input" type="text" placeholder="服务器地址,如 https://dav.jianguoyun.com/dav/" autocomplete="off">
+        <div class="cloud__row">
+          <input id="davUser" class="input" type="text" placeholder="账号" autocomplete="off">
+          <input id="davPass" class="input" type="password" placeholder="密码 / 应用密码" autocomplete="new-password">
+        </div>
+        <div class="cloud__row">
+          <input id="davDir" class="input" type="text" placeholder="目录(可选,如 tab-harbor)">
+          <label class="checkbox" style="white-space:nowrap"><input type="checkbox" id="davAuto"> 每日自动上传</label>
+        </div>
+        <div class="cloud__actions">
+          <button class="btn" id="cloudTest" type="button">测试连接</button>
+          <button class="btn" id="cloudNow" type="button">立即备份</button>
+          <button class="btn" id="cloudRestore" type="button">从云端恢复…</button>
+        </div>
+        <p class="cloud__status" id="cloudStatus">备份文件:tab-harbor-backup.json;密码仅保存在本机,云端副本不含密码。</p>
+      </div>
+
+      <p class="set__label">崩溃恢复快照(打开中的标签)</p>
+      <div id="snapshotList" class="snapshot-list"></div>
+
+      <p class="set__label">每日全量备份(分组 + 工作区,保留 7 份)</p>
+      <div id="backupList" class="snapshot-list"></div>
+
+      <p class="set__label danger-line">危险操作</p>
+      <div class="set__item">
+        <button class="btn btn--danger" id="btnClearAll">清空全部分组…</button>
+      </div>
+    </div>
+    <div class="dialog__foot">
+      <button class="btn" id="settingsCancel">取消</button>
+      <button class="btn btn--primary" id="settingsSave">保存</button>
+    </div>
+  </dialog>
+
+  <!-- ============ 确认对话框 ============ -->
+  <dialog id="confirmDialog">
+    <div class="dialog__head"><span id="confirmTitle">确认操作</span></div>
+    <div class="dialog__body"><p class="confirm__text" id="confirmText"></p></div>
+    <div class="dialog__foot">
+      <button class="btn" id="confirmCancel">取消</button>
+      <button class="btn btn--danger" id="confirmOk">删除</button>
+    </div>
+  </dialog>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+  <input type="file" id="importFile" accept=".json,application/json" hidden>
+  <script type="module" src="manager.js?v=11"></script>
+</body>
+</html>

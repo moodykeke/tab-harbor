@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="../styles/base.css?v=10">
+  <link rel="stylesheet" href="popup.css?v=10">
+  <script src="../shared/i18n.js?v=10"></script>
+  <script src="../shared/mock-chrome.js?v=10"></script>
+  <script src="../shared/store.js?v=10"></script>
+</head>
+
+<body>
+  <div class="pp">
+    <!-- 头部:品牌 + 设置入口 -->
+    <header class="pp__head">
+      <span class="pp__logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M10.5 3v8H4.8L10.5 3Z"/><path d="M13 5.5V11h4.6L13 5.5Z"/><path d="M4 14h16l-2.4 3.6H6.4L4 14Z"/></svg>
+      </span>
+      <strong class="pp__name">Tab Harbor</strong>
+      <button class="iconbtn pp__gear" id="btnOpenSettings" title="打开设置与备份">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.3 1a7 7 0 0 0-2.1-1.3L14 3h-4l-.5 2.5a7 7 0 0 0-2.1 1.3l-2.3-1-2 3.5 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 2.1 1.3L10 21h4l.5-2.5a7 7 0 0 0 2.1-1.3l2.3 1 2-3.5-2-1.5c.06-.4.1-.8.1-1.2Z"/></svg>
+      </button>
+    </header>
+
+    <!-- 保存选项(记忆式) -->
+    <div class="pp__opts">
+      <label class="checkbox"><input type="checkbox" id="optPinned"> 排除固定标签</label>
+      <label class="checkbox"><input type="checkbox" id="optActive"> 排除当前页</label>
+    </div>
+
+    <!-- 菜单:沿用原版「点击即执行 + 数量」的交互,条目增强 -->
+    <!-- 泊位:置顶分组 1–9,数字键或点击立即恢复 -->
+    <div class="pp__berths" id="berthRow" hidden></div>
+
+    <ul class="pp__menu" role="menu">
+      <li>
+        <button class="pp__item pp__item--primary" id="btnSave" role="menuitem" title="把当前窗口的标签页保存为一个分组">
+          <span class="pp__icon">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </span>
+          <span class="pp__label">保存当前窗口标签</span>
+          <span class="pp__count" id="countWindow"></span>
+          <kbd>Alt+S</kbd>
+        </button>
+      </li>
+      <li>
+        <button class="pp__item" id="btnSaveAll" role="menuitem" title="每个窗口各存为一个分组">
+          <span class="pp__icon">
+            <svg viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="11" rx="2"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4H19a2 2 0 0 1 2 2v8.5a1.5 1.5 0 0 1-1.5 1.5H16"/></svg>
+          </span>
+          <span class="pp__label">保存全部窗口</span>
+          <span class="pp__count" id="countWindows"></span>
+        </button>
+      </li>
+
+      <li>
+        <button class="pp__item" id="btnClockOut" role="menuitem" title="把当前窗口整体存为工作区并关闭标签,下次一键开工">
+          <span class="pp__icon">
+            <svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="10" rx="2"/><path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+          </span>
+          <span class="pp__label">收工 · 存为工作区</span>
+        </button>
+      </li>
+      <li id="ppWsNameRow" hidden>
+        <div class="pp__wsrow">
+          <input id="wsName" class="input" type="text" placeholder="工作区名称,留空按时间命名" maxlength="40">
+          <button class="btn btn--primary" id="wsNameOk">收工</button>
+        </div>
+      </li>
+
+      <li class="pp__sep" role="separator"></li>
+
+      <li>
+        <button class="pp__item" id="btnOpenManager" role="menuitem" title="打开管理页:拖拽整理、搜索、恢复">
+          <span class="pp__icon">
+            <svg viewBox="0 0 24 24"><path d="M10.5 3v8H4.8L10.5 3Z"/><path d="M13 5.5V11h4.6L13 5.5Z"/><path d="M4 14h16l-2.4 3.6H6.4L4 14Z"/></svg>
+          </span>
+          <span class="pp__label">查看已保存分组</span>
+          <span class="pp__count" id="countSaved"></span>
+          <svg class="pp__arrow" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+        </button>
+      </li>
+      <li>
+        <button class="pp__item" id="btnSidePanel" role="menuitem" title="在浏览器侧边栏常驻显示分组列表" hidden>
+          <span class="pp__icon">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+          </span>
+          <span class="pp__label">在侧边栏常驻打开</span>
+          <svg class="pp__arrow" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+        </button>
+      </li>
+      <li>
+        <button class="pp__item" id="btnOpenSettingsMenu" role="menuitem" title="保存行为、整理规则、崩溃快照等">
+          <span class="pp__icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.3 1a7 7 0 0 0-2.1-1.3L14 3h-4l-.5 2.5a7 7 0 0 0-2.1 1.3l-2.3-1-2 3.5 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 2.1 1.3L10 21h4l.5-2.5a7 7 0 0 0 2.1-1.3l2.3 1 2-3.5-2-1.5c.06-.4.1-.8.1-1.2Z"/></svg>
+          </span>
+          <span class="pp__label">设置与备份</span>
+          <svg class="pp__arrow" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+        </button>
+      </li>
+    </ul>
+
+    <p class="pp__toast" id="ppToast" hidden></p>
+  </div>
+
+  <script src="popup.js?v=10"></script>
+</body>
+</html>

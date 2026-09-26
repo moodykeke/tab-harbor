@@ -1,0 +1,10 @@
+# 构建产物(打包脚本默认输出到仓库上一级,与既有 zip 同级)
+dist/
+*.zip
+
+# 依赖与工具残留
+node_modules/
+npm-debug.log*
+.DS_Store
+Thumbs.db
+*.tmp
