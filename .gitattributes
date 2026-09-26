@@ -1,0 +1,9 @@
+# 统一以 LF 存放与检出。
+# 理由:扩展源码本就以 LF 写入(历史补丁脚本用 newline='\n'),
+# 而打包脚本按字节读文件计算 SHA-256 —— 若 git 在检出时把 LF 换成 CRLF,
+# 同一份提交会产出不同哈希的 zip,可复现性就被破坏了。
+* text=auto eol=lf
+
+# 二进制资源:不做任何行尾转换
+*.png binary
+*.zip binary
