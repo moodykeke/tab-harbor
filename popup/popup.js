@@ -184,8 +184,16 @@
     const sideBtn = $('#btnSidePanel');
     if (typeof chrome.sidePanel !== 'undefined') sideBtn.hidden = false;
     sideBtn.addEventListener('click', async () => {
-      const res = await send({ action: 'openSidePanel' });
-      if (!res || !res.ok) window.close();
+      // windowId 必须在**本页**取好再发出去:SW 侧在调用 sidePanel.open() 之前
+      // 不能有任何 await,否则这次点击的用户手势就失效了(见 background.js 的注释)。
+      let windowId;
+      try { windowId = (await chrome.windows.getCurrent()).id; } catch (e) { /* 预览模式 */ }
+      const res = await send({ action: 'openSidePanel', windowId });
+      if (res && res.ok) { window.close(); return; }
+      // 失败不要静默关掉弹窗:给出可见反馈,并退回管理页
+      toast(tr('侧边栏打不开,已改为打开管理页'), true);
+      await send({ action: 'openManager' });
+      setTimeout(() => window.close(), 1500);
     });
 
     const openSettingsPage = () => {

@@ -14,34 +14,150 @@
 
   function mkTabs(list, gid) {
     return list.map(function (t, i) {
-      return { id: gid + 't' + i, url: t[0], title: t[1], favIconUrl: '', pinned: !!t[2] };
+      return { id: gid + 't' + i, url: t[0], title: t[1], favIconUrl: '', pinned: !!t[2], savedAt: NOW - (t[3] || 0) * 3600e3 };
+    });
+  }
+
+  /**
+   * 预览演示数据。
+   * 之前只有 2 个分组、没有工作区与记录 —— 于是预览里"时间轴""工作区""周报""洞察"
+   * 四个视图全是空的,既没法验收也没法截图。这里补齐一整套:分组 / 多窗口工作区 /
+   * 连续几天的收工记录(周报与差分才有东西可算)。
+   */
+  const seedGroups = [
+    {
+      id: 'g1',
+      title: '前端资料',
+      createdAt: NOW - 3 * DAY,
+      collapsed: false,
+      tabs: mkTabs([
+        ['https://github.com/trending', 'Trending repositories on GitHub Today', 0, 3],
+        ['https://developer.mozilla.org/zh-CN/docs/Web', 'Web 技术文档 | MDN', 0, 3],
+        ['https://web.dev/learn/css', 'Learn CSS - web.dev', 0, 4],
+      ], 'g1'),
+    },
+    {
+      id: 'g2',
+      title: '每日阅读',
+      createdAt: NOW - 26 * 3600 * 1000,
+      collapsed: false,
+      tabs: mkTabs([
+        ['https://news.ycombinator.com/', 'Hacker News', 0, 2],
+        ['https://www.bilibili.com/', '哔哩哔哩 (゜-゜)つロ 干杯~-bilibili', 0, 5],
+      ], 'g2'),
+    },
+    {
+      id: 'g3',
+      title: '项目 A · 设计稿',
+      createdAt: NOW - 6 * DAY,
+      collapsed: false,
+      pinned: true,
+      tabs: mkTabs([
+        ['https://www.figma.com/file/abc/Design', '设计稿 – Figma', 1, 8],
+        ['https://linear.app/team/issues', 'Issues – Linear', 0, 8],
+      ], 'g3'),
+    },
+    {
+      id: 'g4',
+      title: '调研 · 性能优化',
+      createdAt: NOW - 9 * DAY,
+      collapsed: true,
+      tabs: mkTabs([
+        ['https://web.dev/articles/inp', 'Optimize Interaction to Next Paint', 0, 12],
+        ['https://developer.chrome.com/docs/lighthouse/overview', 'Lighthouse overview', 0, 12],
+        ['https://github.com/GoogleChrome/lighthouse', 'GoogleChrome/lighthouse', 0, 13],
+      ], 'g4'),
+    },
+    {
+      id: 'g5',
+      title: '待读长文',
+      createdAt: NOW - 40 * DAY,
+      collapsed: true,
+      archived: true,
+      tabs: mkTabs([
+        ['https://example.com/long-read-1', '一篇很久没读的长文', 0, 40],
+      ], 'g5'),
+    },
+  ];
+
+  /** 连续几天的收工记录:喂给时间轴差分、港湾周报、重复保存统计与相似分组洞察 */
+  function mkRecords() {
+    const plan = [
+      [0, '项目 A · 设计稿', [
+        ['https://www.figma.com/file/abc/Design', '设计稿 – Figma'],
+        ['https://linear.app/team/issues', 'Issues – Linear'],
+        ['https://github.com/trending', 'Trending repositories on GitHub Today'],
+        ['https://developer.mozilla.org/zh-CN/docs/Web', 'Web 技术文档 | MDN'],
+      ]],
+      [1, '项目 A · 前端联调', [
+        ['https://www.figma.com/file/abc/Design', '设计稿 – Figma'],
+        ['https://linear.app/team/issues', 'Issues – Linear'],
+        ['https://web.dev/articles/inp', 'Optimize Interaction to Next Paint'],
+        ['https://developer.chrome.com/docs/lighthouse/overview', 'Lighthouse overview'],
+      ]],
+      [2, '每日阅读', [
+        ['https://news.ycombinator.com/', 'Hacker News'],
+        ['https://www.bilibili.com/', '哔哩哔哩 (゜-゜)つロ 干杯~-bilibili'],
+      ]],
+      [4, '调研 · 性能优化', [
+        ['https://web.dev/articles/inp', 'Optimize Interaction to Next Paint'],
+        ['https://web.dev/learn/css', 'Learn CSS - web.dev'],
+        ['https://github.com/GoogleChrome/lighthouse', 'GoogleChrome/lighthouse'],
+      ]],
+      [6, '项目 A · 周会', [
+        ['https://linear.app/team/issues', 'Issues – Linear'],
+        ['https://www.figma.com/file/abc/Design', '设计稿 – Figma'],
+      ]],
+    ];
+    return plan.map(function (p, i) {
+      const at = NOW - p[0] * DAY - 2 * 3600e3;
+      return {
+        id: 'r' + i,
+        createdAt: at,
+        title: p[1],
+        source: 'clockout',
+        tabs: p[2].map(function (t, k) {
+          return { id: 'r' + i + 't' + k, url: t[0], title: t[1], favIconUrl: '', pinned: false, savedAt: at };
+        }),
+      };
     });
   }
 
   const seed = {
     version: 2,
     settings: { theme: 'auto' },
-    groups: [
+    groups: seedGroups,
+    records: mkRecords(),
+    workspaces: [
       {
-        id: 'g1',
-        title: '前端资料',
-        createdAt: NOW - 3 * DAY,
-        collapsed: false,
-        tabs: mkTabs([
-          ['https://github.com/trending', 'Trending repositories on GitHub Today'],
-          ['https://developer.mozilla.org/zh-CN/docs/Web', 'Web 技术文档 | MDN'],
-          ['https://web.dev/learn/css', 'Learn CSS - web.dev'],
-        ], 'g1'),
+        id: 'ws1',
+        title: '项目 A · 设计评审',
+        createdAt: NOW - 1 * DAY,
+        lastRestoredAt: NOW - 20 * 3600e3,
+        tabs: mkTabs([], 'ws1').concat([
+          { id: 'ws1a', url: 'https://www.figma.com/file/abc/Design', title: '设计稿 – Figma', favIconUrl: '', pinned: false, savedAt: NOW - DAY },
+          { id: 'ws1b', url: 'https://linear.app/team/issues', title: 'Issues – Linear', favIconUrl: '', pinned: false, savedAt: NOW - DAY },
+          { id: 'ws1c', url: 'https://developer.mozilla.org/zh-CN/docs/Web', title: 'Web 技术文档 | MDN', favIconUrl: '', pinned: false, savedAt: NOW - DAY },
+        ]),
       },
       {
-        id: 'g2',
-        title: '每日阅读',
-        createdAt: NOW - 26 * 3600 * 1000,
-        collapsed: false,
-        tabs: mkTabs([
-          ['https://news.ycombinator.com/', 'Hacker News'],
-          ['https://www.bilibili.com/', '哔哩哔哩 (゜-゜)つロ 干杯~-bilibili'],
-        ], 'g2'),
+        id: 'ws2',
+        title: '双屏 · 写作 + 查资料',
+        createdAt: NOW - 3 * DAY,
+        tabs: [
+          { id: 'ws2a', url: 'https://developer.chrome.com/docs/extensions/', title: 'Chrome Extensions documentation', favIconUrl: '', pinned: false, savedAt: NOW - 3 * DAY },
+          { id: 'ws2b', url: 'https://news.ycombinator.com/', title: 'Hacker News', favIconUrl: '', pinned: false, savedAt: NOW - 3 * DAY },
+          { id: 'ws2c', url: 'https://example.com/second-screen', title: 'Second screen', favIconUrl: '', pinned: false, savedAt: NOW - 3 * DAY },
+        ],
+        windows: [
+          { tabs: [
+            { id: 'ws2a', url: 'https://developer.chrome.com/docs/extensions/', title: 'Chrome Extensions documentation', favIconUrl: '', pinned: false, savedAt: NOW - 3 * DAY },
+            { id: 'ws2b', url: 'https://news.ycombinator.com/', title: 'Hacker News', favIconUrl: '', pinned: false, savedAt: NOW - 3 * DAY },
+          ] },
+          { tabs: [
+            { id: 'ws2c', url: 'https://example.com/second-screen', title: 'Second screen', favIconUrl: '', pinned: false, savedAt: NOW - 3 * DAY },
+          ] },
+        ],
       },
     ],
   };

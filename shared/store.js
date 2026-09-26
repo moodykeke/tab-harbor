@@ -416,10 +416,9 @@
 
   const CLOUD_META_KEY = 'bgtCloudMeta';
 
-  function loadCloudMeta() {
-    return chrome.storage.local.get(CLOUD_META_KEY).then(function (res) {
-      return res[CLOUD_META_KEY] || { lastCloudBackupAt: 0, cloudSyncedFingerprint: '', lastCloudError: '' };
-    });
+  async function loadCloudMeta() {
+    const res = await chrome.storage.local.get(CLOUD_META_KEY);
+    return res[CLOUD_META_KEY] || { lastCloudBackupAt: 0, cloudSyncedFingerprint: '', lastCloudError: '' };
   }
 
   function saveCloudMeta(meta) {
@@ -431,11 +430,10 @@
     return JSON.stringify([payload.groups, payload.workspaces, payload.records, payload.settings]);
   }
 
-  function loadBackups() {
-    return chrome.storage.local.get(BACKUP_KEY).then(function (res) {
-      const list = res[BACKUP_KEY];
-      return Array.isArray(list) ? list : [];
-    });
+  async function loadBackups() {
+    const res = await chrome.storage.local.get(BACKUP_KEY);
+    const list = res[BACKUP_KEY];
+    return Array.isArray(list) ? list : [];
   }
 
   function saveBackups(list) {
@@ -680,8 +678,9 @@
   /**
    * 验证一份每日备份:存在性/结构合法性/内容指纹一致/规模统计。
    * 返回 { ok, checks: [{label, ok, detail}] }。
+   * 异步:需要重算 SHA-256(全篇 async/await,无 .then() 链)。
    */
-  function verifyBackup(node) {
+  async function verifyBackup(node) {
     const checks = [];
     let ok = true;
     let legacy = false;
@@ -690,7 +689,7 @@
       if (!pass) ok = false;
     };
     push('可解析', !!node && typeof node === 'object');
-    if (!node || typeof node !== 'object') return Promise.resolve({ ok, legacy, checks });
+    if (!node || typeof node !== 'object') return { ok, legacy, checks };
 
     // 统一入口:{manifest, data} 包装;v1 裸 payload(含 kind:'full')也直接作为 payload
     let manifest = null;
@@ -707,7 +706,7 @@
     push('来源合法', !!payload && payload.app === BACKUP_APP && payload.kind === 'full',
       payload ? String(payload.app || '?') + '/' + String(payload.kind || '?') : 'nothing');
     if (!payload || payload.app !== BACKUP_APP || payload.kind !== 'full') {
-      return Promise.resolve({ ok, legacy, checks });
+      return { ok, legacy, checks };
     }
     if (!manifest) legacy = true; // v1 旧格式:无清单
     const groups = Array.isArray(payload.groups) ? payload.groups : null;
@@ -718,7 +717,7 @@
     push('记录可读', Array.isArray(records), records.length + ' records');
     push('设置可读', !!payload.settings && typeof payload.settings === 'object', '');
 
-    const finish = () => Promise.resolve({ ok, legacy, checks });
+    const finish = () => ({ ok, legacy, checks });
 
     if (!(manifest && typeof manifest.payloadHash === 'string')) {
       // 旧格式:诚实标注,不参与整体通过判定,但给出重新备份建议
@@ -728,17 +727,16 @@
     }
     push('清单完整', manifest.payloadHash.length === 64,
       'schema ' + manifest.schemaVersion + ' · app ' + (manifest.appVersion || '?'));
-    return hashPayload(payload).then((hash) => {
-      push('SHA-256 一致', hash === manifest.payloadHash, manifest.payloadHash.slice(0, 12) + '…');
-      push('清单 groupsCount', manifest.groupsCount === (groups ? groups.length : 0),
-        manifest.groupsCount + ' / ' + (groups ? groups.length : 0));
-      push('清单 workspacesCount', manifest.workspacesCount === workspaces.length,
-        manifest.workspacesCount + ' / ' + workspaces.length);
-      push('清单 recordsCount', manifest.recordsCount === records.length,
-        manifest.recordsCount + ' / ' + records.length);
-      push('设置已包含', !!manifest.settingsIncluded, '');
-      return finish();
-    });
+    const hash = await hashPayload(payload);
+    push('SHA-256 一致', hash === manifest.payloadHash, manifest.payloadHash.slice(0, 12) + '…');
+    push('清单 groupsCount', manifest.groupsCount === (groups ? groups.length : 0),
+      manifest.groupsCount + ' / ' + (groups ? groups.length : 0));
+    push('清单 workspacesCount', manifest.workspacesCount === workspaces.length,
+      manifest.workspacesCount + ' / ' + workspaces.length);
+    push('清单 recordsCount', manifest.recordsCount === records.length,
+      manifest.recordsCount + ' / ' + records.length);
+    push('设置已包含', !!manifest.settingsIncluded, '');
+    return finish();
   }
 
   /* ---------------- StoredTab 工厂 ---------------- */

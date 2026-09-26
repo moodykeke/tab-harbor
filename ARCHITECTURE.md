@@ -146,6 +146,42 @@ v3.11.2 的教训是只有数据层测试时,57 项全绿与 5 个功能全死�
   (A1/A2/B1/B2 四个方向同时命中)
 - 用 v3.11.2 的 `store.js` 跑同一 utm fixture → `buildGroup(dedupe:true)` 保留 3 条,修复后 1 条
 
+### Chrome 官方 `chrome-extensions` 技能审校(v3.11.3)
+
+按 Google Chrome 团队 **Modern Web Guidance** 的 `chrome-extensions` 技能逐条对照审校
+(技能包与来源见 `skills/README.md`,20 条 MV3 强制规则 + 30 项 Output Checklist +
+上架前审查清单)。结论如下。
+
+**已修正的实现偏差**:
+
+| 来源 | 偏差 | 修正 |
+| --- | --- | --- |
+| 强制规则 9 | 右键菜单动作**无任何用户反馈** | 动作成功后徽章闪 ✓ 2.2s(不引入 notifications 权限) |
+| service-worker.md 规则 3 | `scheduleMenuRebuild` 用 `setTimeout(800)` 防抖;SW 在窗口内被回收则菜单永远停在旧内容 | 改为"在飞则合并"的循环,零计时器、零漏更新 |
+| 强制规则 5 | 5 处 `.then()` 链 | 全部改 async/await(`store.js` 三个读取器 + `verifyBackup`、`events.js`/`sidepanel.js` 的 onChanged);`writeChain` 的互斥原语保留(语义就是链式) |
+| 规则 20 / permissions.md | `openSidePanel` 路由在 `sidePanel.open()` **之前** `await chrome.windows.getCurrent()` —— 用户手势被烧掉,侧边栏入口在真机上点了没反应 | windowId 由 popup 取好传参,`open()` 成为路由第一条语句;popup 失败时改为可见提示 + 回退管理页(不再静默关闭) |
+| omnibox.md §Handling Selection | `onInputEntered` 忽略 `disposition`,三条路径都开前台新标签(Enter 不复用当前标签、Alt+Enter 抢焦点) | 按 `currentTab` / `newForegroundTab` / `newBackgroundTab` 分支 |
+| omnibox.md §Default Suggestion | 从未调用 `setDefaultSuggestion`,无命中时下拉框一片空白 | 在 `onInputChanged` 内设置(带 `<match>`,已特性检测) |
+| Chrome 官方 sidePanel 参考 | `minimum_chrome_version: 114`,而 `sidePanel.open()` 需要 **116** | manifest 上调为 116 |
+
+**顺带查出的其他问题**(不属于该技能范围,由审校过程带出):
+- 侧栏版本号硬编码 `v3.11.2`,发到 3.11.3 后界面仍在撒谎 → 改为运行时从 manifest 读
+- 侧栏仍写着已被推翻的"数据仅存本地" → 与全站隐私表述对齐
+- 英文商店描述 **211 字符,超出 CWS 132 字符硬上限**(改前 157 也已超)→ 压到 126
+- 时间轴视图:工作记录与收藏分组各自带"今天/昨天"桶标签却无分区标题,同一个"昨天"出现两次;
+  且「收藏分组」标题是在循环**之后** append 的,落在它所标注内容的下方 → 加分区标题并调整顺序
+
+**确认满足的部分**(抽样,完整清单见技能 Output Checklist):MV3 无 V2 API、图标 5 个尺寸均为真实像素、
+侧边栏有显式打开入口且未用 `setPanelBehavior`、无 `eval`/远程代码、`tabs` 权限与 `tab.url` 使用匹配、
+`chrome.windows` 未误用不存在的 `.query()`、`onMessage` 正确 `return true`、无内联脚本/事件处理器、
+`contextMenus` 未使用需 Chrome 150+ 的 `'tab'` 上下文、未用 `activeTab`(侧栏场景下它无效)、
+`localStorage` 未用于 SW、`onMessage` 中 `permissions.request` 前无 await。
+
+**仍需真机确认**(技能文档无法替代实际浏览器):
+- `sidePanel.open()` 的手势传播:已按文档把调用放在第一语句,但仍需在真实 Chrome 上点一次弹窗按钮确认
+- omnibox `harbor 2` 下拉渲染与 `berth:N` / `t:<url>` 选中行为
+- popup 在 320px 宽下的排版(长中文标签是否换行/溢出)
+
 ## 5. 未来可扩展方向(按建议优先级)
 
 ### 第一梯队:工作记忆的"出口"与"入口"(低成本、直接强化定位)
@@ -227,8 +263,8 @@ popup 与设置页仍用自己早先读到的快照整包覆盖 `chrome.storage.
 - 落盘为全量 blob 重写,写入成本随库增大而线性上升;分键化改造是 v3.12/v4.0 之前的待决项(见第 5 节)
 - URL 归一化缓存上限 1 万条且按插入序逐出:库的不同 URL 总数超过 1 万后缓存收益归零,
   渲染退化为全量重解析。若要支撑 v4.0 的历史规模,需要真正的 LRU 或按库分区
-- `minimum_chrome_version: 114` 未经逐 API 核对:`chrome.sidePanel.open()` 可能要求 116。
-  使用处已有特性检测(缺失时回退打开管理页),不会崩,但应在真机核对后再决定是否上调
+- `minimum_chrome_version` 已由 114 上调为 **116** —— 116 是 `chrome.sidePanel.open()` 的下限
+  (已对照 Chrome 官方 sidePanel 参考核实)。使用处仍保留特性检测,缺失时回退打开管理页
 - 打包:`node tools/pack.js` —— 显式白名单只装运行时文件、校验页面引用完整性、打印 SHA-256;
   产物 `tab-harbor-v3.11.3-cws.zip`(约 116KB / 33 项)。**不要手工压缩**:
   v3.11.2 的商店包正是手工产物,混入了 `test/`(43KB)与内部备忘录 `提交说明.md`

@@ -139,9 +139,15 @@
     });
 
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'local' && changes[BGTStore.STORE_KEY]) {
-        BGTStore.load().then((d) => { data = d; render(); });
-      }
+      if (area !== 'local' || !changes[BGTStore.STORE_KEY]) return;
+      (async () => {
+        try {
+          data = await BGTStore.load();
+          render();
+        } catch (e) {
+          /* 读取失败时保持当前视图 */
+        }
+      })();
     });
   }
 

@@ -455,6 +455,16 @@
 /* ---------------- 时间轴视图 ---------------- */
 
 .tl-day { margin-bottom: 18px; }
+/* 时间轴分区标题:区分"工作记录"与"收藏分组"两个区块 */
+.tl-section__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+  margin: 22px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.tl-section__label:first-child { margin-top: 4px; }
 .tl-day__label {
   font-size: 12px;
   font-weight: 700;

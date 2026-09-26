@@ -206,6 +206,7 @@ function createEnv(opts) {
     omnibox: {
       onInputChanged: { addListener: (fn) => on('omnibox.onInputChanged', fn) },
       onInputEntered: { addListener: (fn) => on('omnibox.onInputEntered', fn) },
+      setDefaultSuggestion: (o) => record('omnibox.setDefaultSuggestion', [o]),
     },
     alarms: {
       create: (n, i) => { record('alarms.create', [n, i]); },

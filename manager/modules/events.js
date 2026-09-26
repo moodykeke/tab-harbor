@@ -504,11 +504,17 @@ export function bindEvents() {
   // 外部数据变化(如 Alt+S 快捷键保存、popup/右键菜单保存);
   // 自己写入的变更通过令牌跳过,避免多余重渲染
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes[BGTStore.STORE_KEY]) {
-      const next = changes[BGTStore.STORE_KEY].newValue;
-      if (BGTStore.isSelfWrite(next && next.updatedAt)) return;
-      BGTStore.load().then((d) => { state.data = d; render(); });
-    }
+    if (area !== 'local' || !changes[BGTStore.STORE_KEY]) return;
+    const next = changes[BGTStore.STORE_KEY].newValue;
+    if (BGTStore.isSelfWrite(next && next.updatedAt)) return;
+    (async () => {
+      try {
+        state.data = await BGTStore.load();
+        render();
+      } catch (e) {
+        /* 读取失败时保持当前视图,不要因为一次读盘异常炸掉整页 */
+      }
+    })();
   });
 
 }

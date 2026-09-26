@@ -32,16 +32,48 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 - **omnibox 监听器改为 SW 顶层注册**(MV3 纪律):此前写在 `onInstalled`/`onStartup` 回调里,
   既可能在冷启动时机缺失,又会在同一实例内重复注册导致建议出现两遍
 
-### Added(验证能力 —— 本版的重点)
+### Fixed(按 Chrome 官方 `chrome-extensions` 技能审校 · 详见 ARCHITECTURE 第 4 节)
+- **侧边栏入口在真机上点了没反应**:`sidePanel.open()` 需要用户手势,而原实现先在 SW 侧
+  `await chrome.windows.getCurrent()` —— 跨 sendMessage 的手势只在那一条消息的第一个同步
+  轮次内有效,await 一次即失效,异常又被 catch 吞掉。改为 windowId 由 popup 取好传参、
+  `open()` 成为路由第一条语句;popup 失败时给可见提示并回退管理页,不再静默关闭
+- **`minimum_chrome_version` 由 114 上调为 116**:116 才是 `chrome.sidePanel.open()` 的下限
+  (已对照 Chrome 官方 sidePanel 参考核实)
+- **地址栏 Enter / Alt+Enter 行为错误**:`onInputEntered` 忽略 `disposition`,三条路径都开
+  前台新标签 —— Enter 不复用当前标签、Alt+Enter 抢焦点。改为按
+  `currentTab` / `newForegroundTab` / `newBackgroundTab` 分支
+- **地址栏无命中时下拉框空白**:补 `setDefaultSuggestion`(带 `<match>` 高亮)
+- **右键菜单动作毫无反馈**(SKILL 强制规则 9):动作成功后徽章闪 ✓ 2.2s
+- **右键菜单可能永远停在旧内容**:重建用的是 `setTimeout(800)` 防抖,SW 在窗口内被回收
+  即丢失(service-worker.md 规则 3:计时器随 SW 消失)。改为"在飞则合并"的循环,零计时器
+- **5 处 `.then()` 链**改为 async/await(store 的三个读取器与 verifyBackup、events/sidepanel 的 onChanged)
+- **英文商店描述超限**:211 字符,超出 CWS 的 132 字符硬上限(改前 157 亦超)→ 压到 126
+- **侧栏版本号硬编码 `v3.11.2`**:发新版本后界面继续撒谎 → 改为运行时从 manifest 读取
+- **侧栏仍写着已被推翻的"数据仅存本地"** → 与全站隐私表述对齐
+- **时间轴分区混乱**:工作记录与收藏分组各自带"今天/昨天"桶标签却没有分区标题,同一个
+  "昨天"出现两次;且「收藏分组」标题 append 在它所标注内容**之后**。加分区标题并调整顺序
+
+### Added(上架材料 —— 按技能 Part 2 补齐)
+- **`CHROMEWEBSTORE.md`**:列表文案(中英)、单句用途、类目、9 项权限逐条理由、
+  隐私数据披露表、版本历史、审查备注 —— 提交后台时可直接粘贴
+- **`PRIVACY.md`**:隐私政策全文(按技能的标准政策结构);发布到公开 URL 后填入 CHROMEWEBSTORE.md
+- **`store-assets/` 5 张商店截图**(1280×800 ×4 + 640×400 ×1,已逐一核验像素):
+  此前一张都没有,而 CWS 要求至少 1 张。由 `tools/make-screenshots.js` 用无头 Chrome +
+  Node 内置 WebSocket 直连 CDP 抓取真实预览界面,零新增依赖
+- **`skills/`**:归档 Chrome 团队的 `chrome-extensions` 技能包(含来源、版本、许可说明)
+- 预览演示数据补齐:此前只有 2 个分组、无工作区无记录,预览里时间轴/工作区/周报/洞察**全是空的**;
+  现补成 5 分组 + 2 工作区(含多窗口)+ 5 条跨天收工记录
+
+### Added(验证能力 —— 接缝门禁与可复现打包)
 - `test/helpers/sw-env.js` + `test/sw-routes.js`:**Service Worker 运行时 harness**。
   在 `vm` 上下文中真实加载 `background.js` 与 `shared/*.js`(真实 importScripts 语义),
-  内置内存版 `chrome.*`(窗口/标签世界、storage、事件监听器)与消息投递。20 项断言覆盖
-  全部 12 条消息路由与全部事件监听器
+  内置内存版 `chrome.*`(窗口/标签世界、storage、事件监听器)与消息投递。全部 12 条消息路由
+  与全部事件监听器都有断言
 - `test/seams.js`:8 项静态契约 —— UI→SW 路由一致性、mock↔生产路由镜像(差异只能来自
   显式豁免表)、三个页面的 DOM id 契约
 - `tools/check-globals.js`:零依赖的未声明标识符检查(漏 import 这一类 P0 的回归闸)。
   它在修复前对 v3.11.2 源码报出上述前两个缺陷
-- `tools/test-all.js`:发布门禁,7 套 88 项,任一失败非零退出
+- `tools/test-all.js`:发布门禁,任一失败非零退出
 - `tools/pack.js`:**可复现打包**。零依赖 ZIP 写入器(zlib deflateRaw)、显式白名单
   (散落文件天然进不来)、页面引用完整性校验、zip 内时间戳固定(源码不变则 SHA-256 不变)
 
@@ -55,10 +87,12 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 - **启用 git 版本控制**;git 之前的历史补丁脚本归档到 `tools/patches/`(只读,附说明)
 
 ### 测试
-- 7 套 88 项:`store 37` + `perf 9` + `i18n 5` + `integration 9` + `sw-routes 20` + `seams 8`(另加 lint 门禁)
+- 7 套 **97** 项:`store 37` + `perf 9` + `i18n 5` + `integration 9` + `sw-routes 29` + `seams 8`(另加 lint 门禁)
 - 变异验证(证明测试本身有效):换回 v3.11.2 的 `background.js` → `sw-routes` 报 5 项 FAIL;
   把 `case 'saveWorkspace':` 改名 → `seams` 报 4 项 FAIL;换回旧 `store.js` 的同一 fixture
   下 `buildGroup(dedupe:true)` 保留 3 条、修复后 1 条
+- 按 Chrome 官方 `chrome-extensions` 技能审校:20 条强制规则 + 30 项 Output Checklist +
+  上架前审查清单逐条对照,结论与"仍需真机确认"清单见 ARCHITECTURE 第 4 节
 
 ## [3.11.2] — 性能守卫强化
 

@@ -126,6 +126,66 @@ test('omnibox 输入泊位号给出 berth 建议(回归:调用未注入的 t())'
   assert.ok(got[0][0].description.indexOf('工作') >= 0);
 });
 
+/* ---- 5b. 侧边栏:手势不能在 SW 侧被 await 烧掉 ---- */
+
+test('openSidePanel:open() 之前不得有任何 await(否则用户手势失效)', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  const res = await env.send({ action: 'openSidePanel', windowId: 7 });
+  assert.strictEqual(res.ok, true);
+  // 关键断言:窗口 id 必须由调用方传入,SW 侧不能自己去 await 取
+  // (Chrome 文档:sidePanel.open() 需要用户手势,而 await 会烧掉跨 sendMessage 的手势)
+  assert.strictEqual(env.callCount('windows.getCurrent'), 0, 'SW 侧不应在 open() 前调用 getCurrent');
+  const opened = env.callsOf('sidePanel.open');
+  assert.strictEqual(opened.length, 1);
+  assert.strictEqual(opened[0].args[0].windowId, 7);
+});
+
+test('openSidePanel:缺少 windowId 时回退打开管理页', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  const res = await env.send({ action: 'openSidePanel' });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.fallback, true);
+  assert.strictEqual(env.callCount('sidePanel.open'), 0);
+  assert.ok(env.callCount('tabs.create') >= 1, '应回退打开管理页');
+});
+
+test('omnibox onInputChanged 设置默认建议(供无命中时显示)', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  env.fire('omnibox.onInputChanged', 'ab', () => {});
+  await env.settle();
+  const calls = env.callsOf('omnibox.setDefaultSuggestion');
+  assert.strictEqual(calls.length, 1);
+  assert.ok(String(calls[0].args[0].description).indexOf('<match>') >= 0);
+});
+
+/* ---- 5c. omnibox 选择:必须尊重 disposition ---- */
+
+test('omnibox onInputEntered:currentTab 复用当前标签', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  env.fire('omnibox.onInputEntered', 't:' + encodeURIComponent('https://x.com/'), 'currentTab');
+  await env.settle();
+  assert.strictEqual(env.callCount('tabs.update'), 1, 'currentTab 应走 tabs.update');
+  assert.strictEqual(env.callCount('tabs.create'), 0);
+});
+
+test('omnibox onInputEntered:newForegroundTab 新建前台标签', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  env.fire('omnibox.onInputEntered', 't:' + encodeURIComponent('https://x.com/'), 'newForegroundTab');
+  await env.settle();
+  const created = env.callsOf('tabs.create');
+  assert.strictEqual(created.length, 1);
+  assert.notStrictEqual(created[0].args[0].active, false);
+});
+
+test('omnibox onInputEntered:newBackgroundTab(Alt+Enter)不抢焦点', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  env.fire('omnibox.onInputEntered', 't:' + encodeURIComponent('https://x.com/'), 'newBackgroundTab');
+  await env.settle();
+  const created = env.callsOf('tabs.create');
+  assert.strictEqual(created.length, 1);
+  assert.strictEqual(created[0].args[0].active, false, 'Alt+Enter 不应抢焦点');
+});
+
 /* ---- 5. 重命名走 SW 串行端点 ---- */
 
 test('renameGroup / renameWorkspace 真正落盘', async () => {
@@ -314,6 +374,40 @@ test('storage 变化时更新徽章为分组数', async () => {
   await env.settle(20);
   const last = env.callsOf('action.setBadgeText').pop();
   assert.strictEqual(last.args[0].text, '2');
+});
+
+test('右键菜单动作给出用户反馈(徽章闪 ✓)—— SKILL 强制规则 9', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  env.fire('contextMenus.onClicked', { menuItemId: 'bgt-new' },
+    { url: 'https://a.com/', title: 'A', favIconUrl: '' });
+  await env.settle(60);
+  const texts = env.callsOf('action.setBadgeText').map((c) => c.args[0].text);
+  assert.ok(texts.indexOf('✓') >= 0, '动作后应闪一个 ✓,实际: ' + JSON.stringify(texts));
+  assert.strictEqual(env.data().groups.length, 1, '分组应已落盘');
+});
+
+test('右键菜单"存入已有分组"重复添加时不谎报成功', async () => {
+  const data = EMPTY();
+  data.groups = [BGTStore.normalizeGroup({ id: 'g1', title: 'G', tabs: [{ url: 'https://a.com/' }] })];
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: data } });
+  env.fire('contextMenus.onClicked', { menuItemId: 'g:g1' },
+    { url: 'https://a.com/', title: 'A', favIconUrl: '' });
+  await env.settle(60);
+  const texts = env.callsOf('action.setBadgeText').map((c) => c.args[0].text);
+  assert.strictEqual(texts.indexOf('✓'), -1, '已存在时不应闪成功徽章');
+  assert.strictEqual(env.data().groups[0].tabs.length, 1, '不应产生重复标签');
+});
+
+test('storage 变化立即重建右键菜单(不再依赖 800ms setTimeout)', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  const data = EMPTY();
+  data.groups = [BGTStore.normalizeGroup({ title: '新组', tabs: [{ url: 'https://a.com/' }] })];
+  await env.chrome.storage.local.set({ bgtData: data });
+  // 只等 60ms:旧实现是 setTimeout(800ms),SW 若在窗口内被回收菜单就永远停在旧内容
+  await env.settle(60);
+  assert.ok(env.callCount('contextMenus.removeAll') >= 1, '应在无计时器的情况下完成重建');
+  const ids = env.callsOf('contextMenus.create').map((c) => c.args[0].id);
+  assert.ok(ids.indexOf('bgt-new') >= 0);
 });
 
 run().then(() => {

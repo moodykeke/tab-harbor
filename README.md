@@ -93,7 +93,8 @@
 
 ## 已知限制
 
-- 原生标签组导入/恢复、右键菜单、omnibox(`harbor` 关键词)、侧边栏需在真实 Chrome 114+ 中使用
+- 原生标签组导入/恢复、右键菜单、omnibox(`harbor` 关键词)、侧边栏需在真实 Chrome 116+ 中使用
+  (116 是 `chrome.sidePanel.open()` 的下限,已对照 Chrome 官方 sidePanel 参考核实)
 - 云端备份为 WebDAV 协议:不支持 OAuth 网盘(如纯网页版 Dropbox);WebDAV 密码以明文存于本机 `chrome.storage.local`,云端副本已剥离密码
 - `dev-server.js`、`test/`、`tools/` 为开发文件。**不要手工压缩打包** —— 用 `node tools/pack.js`:
   它按显式白名单只装入运行时文件,并校验页面引用的资源是否齐全

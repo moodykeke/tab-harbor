@@ -125,6 +125,9 @@ function renderTimeline() {
 
   // 工作记录(不可变日志):按天分桶,逐条带与上一记录的差分
   if (records.length) {
+    // 分区标题:工作记录与收藏分组各自带"今天/昨天…"桶标签,不加分区标题时
+    // 同一个"昨天"会出现两次,读者分不清哪一段是什么。
+    wrap.appendChild(h('p', { class: 'tl-section__label', text: tr('工作记录') }));
     const asc = records.slice().reverse();
     const diffOf = new Map();
     for (let i = 0; i < asc.length; i += 1) {
@@ -156,14 +159,22 @@ function renderTimeline() {
     if (shownRec) wrap.appendChild(day);
   }
 
-  let shown = 0;
+  // 收藏分组:先按天收集,再渲染 —— 这样分区标题能出现在它标注的内容**上方**
+  // (此前 "收藏分组" 是在循环之后 append 的,标题落在它所标注的分组下面)
+  const groupDays = [];
   for (const bucket of buckets) {
     const rows = bucket.groups.filter(match);
-    if (!rows.length) continue;
-    shown += rows.length;
+    if (rows.length) groupDays.push({ label: bucket.label, rows });
+  }
+  let shown = 0;
+  if (groupDays.length) {
+    wrap.appendChild(h('p', { class: 'tl-section__label', text: tr('收藏分组') }));
+  }
+  for (const gd of groupDays) {
+    shown += gd.rows.length;
     const day = h('section', { class: 'tl-day' },
-      h('p', { class: 'tl-day__label', text: tr(bucket.label) }));
-    for (const g of rows) {
+      h('p', { class: 'tl-day__label', text: tr(gd.label) }));
+    for (const g of gd.rows) {
       const hueVal = hueOf(g.id);
       const row = h('div', { class: 'tl-row', style: `--h:${hueVal}`, 'data-id': g.id },
         h('span', { class: 'sp__dot' }),
@@ -181,7 +192,6 @@ function renderTimeline() {
     }
     wrap.appendChild(day);
   }
-  if (shown) wrap.appendChild(h('p', { class: 'tl-day__label', text: tr('收藏分组') }));
   if (!shown && !records.length) {
     wrap.appendChild(h('p', {
       class: 'snapshot-empty',

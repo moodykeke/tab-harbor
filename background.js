@@ -8,6 +8,7 @@
 importScripts('shared/i18n.js', 'shared/store.js');
 
 const BADGE_COLOR = '#0891b2';
+const BADGE_OK_COLOR = '#16a34a';   // 右键菜单动作成功时的徽章色
 const SNAPSHOT_ALARM = 'bgt-snapshot';
 const SNAPSHOT_KEEP = 3;
 const BACKUP_ALARM = 'bgt-daily-backup';
@@ -466,18 +467,41 @@ async function rebuildContextMenus() {
   }
 }
 
+/**
+ * 右键菜单动作的用户反馈。
+ * SKILL 强制规则 9:右键菜单执行了动作就必须给反馈,不能悄无声息。
+ * 做法:徽章闪一个 ✓,2.2s 后恢复为分组数。不引入 notifications 权限(少一项审核面)。
+ * 取舍:若 SW 恰好在这 2.2s 窗口内被回收,徽章可能停在 ✓ —— 它会在下一次 storage
+ * 变化或 SW 重启时自愈(updateBadge 每次都会重算)。
+ */
+let badgeFlashTimer = null;
+function flashBadge() {
+  try {
+    chrome.action.setBadgeText({ text: '✓' });
+    chrome.action.setBadgeBackgroundColor({ color: BADGE_OK_COLOR });
+  } catch (e) { return; }
+  clearTimeout(badgeFlashTimer);
+  badgeFlashTimer = setTimeout(async () => {
+    badgeFlashTimer = null;
+    try { updateBadge(await BGTStore.load()); } catch (e) { /* 忽略 */ }
+  }, 2200);
+}
+
+/** 把标签加入分组;返回是否有实际改动(供右键菜单反馈使用) */
 async function addTabToGroup(groupId, tab) {
-  if (!tab || !tab.url) return;
+  if (!tab || !tab.url) return false;
   const data = await BGTStore.load();
   const group = data.groups.find((g) => g.id === groupId);
   const key = BGTStore.normalizeUrl(tab.url).key;
-  if (!group || group.tabs.some((t) => BGTStore.normalizeUrl(t.url).key === key)) return;
+  if (!group || group.tabs.some((t) => BGTStore.normalizeUrl(t.url).key === key)) return false;
   group.tabs.push(BGTStore.makeStoredTab(tab));
   group.collapsed = false;
   await BGTStore.persist(data);
+  return true;
 }
 
 async function onContextMenuClicked(info, tab) {
+  let acted = false;
   if (info.menuItemId === 'bgt-new') {
     if (!tab || !tab.url) return;
     const data = await BGTStore.load();
@@ -487,11 +511,11 @@ async function onContextMenuClicked(info, tab) {
       tabs: [{ url: tab.url, title: tab.title, favIconUrl: tab.favIconUrl, pinned: tab.pinned }],
     }));
     await BGTStore.persist(data);
-    return;
+    acted = true;
+  } else if (String(info.menuItemId).startsWith('g:')) {
+    acted = await addTabToGroup(String(info.menuItemId).slice(2), tab);
   }
-  if (String(info.menuItemId).startsWith('g:')) {
-    await addTabToGroup(String(info.menuItemId).slice(2), tab);
-  }
+  if (acted) flashBadge();
 }
 
 /* ---------------- omnibox:地址栏 bgt 搜索 ---------------- */
@@ -517,6 +541,14 @@ function searchEverything(data, text) {
 function initOmnibox() {
   if (!chrome.omnibox) return;
   chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
+    // 默认建议:没有精确命中时下拉框也有一句人话可读
+    // (omnibox.md §Default Suggestion;setDefaultSuggestion 必须在 onInputChanged 内调用)
+    if (chrome.omnibox.setDefaultSuggestion) {
+      chrome.omnibox.setDefaultSuggestion({
+        description: escapeXml(tr('搜索已保存的标签,或输入 1–9 直达泊位'))
+          + ' <match>' + escapeXml(text) + '</match>',
+      });
+    }
     try {
       const data = await BGTStore.load();
       // 泊位速恢复:`1`-`9` 或 `#2`
@@ -539,27 +571,38 @@ function initOmnibox() {
       })));
     } catch (e) { /* 忽略建议失败 */ }
   });
-  chrome.omnibox.onInputEntered.addListener(async (text) => {
+  chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
     try {
+      // 必须尊重 disposition(omnibox.md §Handling Selection):
+      // currentTab 复用当前标签,newBackgroundTab(Alt+Enter)不得抢焦点。
+      // 此前三条路径都调 chrome.tabs.create,等于把 currentTab 与 Alt+Enter 都变成了前台新标签。
+      const openOne = async (url) => {
+        if (disposition === 'currentTab') { await chrome.tabs.update({ url }); return; }
+        await chrome.tabs.create({ url, active: disposition !== 'newBackgroundTab' });
+      };
       if (text.startsWith('berth:')) {
         const data = await BGTStore.load();
         const berth = BGTStore.getBerths(data).find((b) => b.berth === Number(text.slice(6)));
         const g = berth && (data.groups || []).find((x) => x.id === berth.id);
-        if (g) {
+        if (g && g.tabs.length) {
+          // 泊位恢复要重建整个现场(多标签),currentTab 语义不适用:
+          // 统一在最后聚焦窗口里开,只有明确要求后台时才全部不激活。
           const cur = await chrome.windows.getLastFocused();
-          for (const tb of g.tabs) {
-            await chrome.tabs.create({ windowId: cur.id, url: tb.url, pinned: tb.pinned, active: false });
+          const quiet = disposition === 'newBackgroundTab';
+          for (let i = 0; i < g.tabs.length; i += 1) {
+            const tb = g.tabs[i];
+            await chrome.tabs.create({
+              windowId: cur.id, url: tb.url, pinned: tb.pinned,
+              active: !quiet && i === 0,
+            });
           }
         }
         return;
       }
-      if (text.startsWith('t:')) {
-        await chrome.tabs.create({ url: decodeURIComponent(text.slice(2)) });
-        return;
-      }
+      if (text.startsWith('t:')) { await openOne(decodeURIComponent(text.slice(2))); return; }
       const data = await BGTStore.load();
       const hits = searchEverything(data, text);
-      if (hits.length) await chrome.tabs.create({ url: hits[0].tab.url });
+      if (hits.length) await openOne(hits[0].tab.url);
     } catch (e) { /* 忽略 */ }
   });
 }
@@ -572,85 +615,100 @@ function escapeXml(s) {
 
 /* ---------------- 消息路由 ---------------- */
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  (async () => {
-    try {
-      switch (msg && msg.action) {
-        case 'saveWindow':
-          return await saveWindow(null, { fromManager: !!msg.fromManager, onlyNewKeys: msg.__onlyNewKeys });
-        case 'saveAllWindows':
-          return await saveAllWindows({ fromManager: !!msg.fromManager });
-        case 'openManager':
-          await chrome.tabs.create({ url: chrome.runtime.getURL(BGTStore.MANAGER_PAGE) });
+/**
+ * 全部消息路由。纯分发:只吃 msg、只吐响应对象,不直接碰 sendResponse。
+ * 抽成独立函数的好处:① 全篇 async/await,不再用 .then(sendResponse) 适配;
+ * ② 路由逻辑集中在一处,便于与 test/sw-routes.js 的断言对照。
+ */
+async function handleMessage(msg) {
+  try {
+    switch (msg && msg.action) {
+      case 'saveWindow':
+        return await saveWindow(null, { fromManager: !!msg.fromManager, onlyNewKeys: msg.__onlyNewKeys });
+      case 'saveAllWindows':
+        return await saveAllWindows({ fromManager: !!msg.fromManager });
+      case 'openManager':
+        await chrome.tabs.create({ url: chrome.runtime.getURL(BGTStore.MANAGER_PAGE) });
+        return { ok: true };
+      case 'openSidePanel': {
+        // sidePanel.open() 需要用户手势(Chrome 文档:"through an extension user gesture"),
+        // 且手势跨 sendMessage 只在这一条消息的第一个同步轮次内有效 —— 调用前 await
+        // 任何东西(哪怕只是取 windowId)都会让手势失效并抛 "must be called during
+        // a user gesture",异常随后被本函数的 catch 吞掉,用户看到的是"点了没反应"。
+        // 所以 windowId 由 popup 事先取好传进来,让 open() 成为这里的第一条语句;
+        // 手势在调用那一刻即已生效,其后的 await 只是等结果。
+        if (chrome.sidePanel && chrome.sidePanel.open && msg.windowId != null) {
+          const opened = chrome.sidePanel.open({ windowId: msg.windowId });
+          await opened;
           return { ok: true };
-        case 'openSidePanel':
-          // 由 popup 的用户手势触发;不支持时回退打开管理页
-          if (chrome.sidePanel && chrome.sidePanel.open) {
-            const win = await chrome.windows.getCurrent();
-            await chrome.sidePanel.open({ windowId: win.id });
-            return { ok: true };
-          }
-          await chrome.tabs.create({ url: chrome.runtime.getURL(BGTStore.MANAGER_PAGE) });
-          return { ok: true, fallback: true };
-        case 'saveWorkspace':
-          // allWindows 必须透传:漏传会让"包含全部窗口"静默失效(仅存聚焦窗口)
-          return await saveWorkspace(msg.title, { closeTabs: msg.closeTabs !== false, allWindows: !!msg.allWindows });
-        case 'restoreWorkspace':
-          return await restoreWorkspace(msg.workspaceId, msg.mode || 'new');
-        case 'renameGroup':
-          // Single Writer:列表级 UI 态写操作收口到 SW 串行执行,
-          // 消除管理页防抖写与 Alt+S 后台保存的双写竞争
-          return await BGTStore.mutate(async () => {
-            const data = await BGTStore.load();
-            const group = data.groups.find((g) => g.id === msg.groupId);
-            if (!group) return { ok: false, reason: 'not-found' };
-            group.title = String(msg.title || '').trim();
-            await BGTStore.persist(data);
-            return { ok: true, title: group.title };
-          });
-        case 'renameWorkspace':
-          return await BGTStore.mutate(async () => {
-            const data = await BGTStore.load();
-            const ws = data.workspaces.find((w) => w.id === msg.workspaceId);
-            if (!ws) return { ok: false, reason: 'not-found' };
-            ws.title = String(msg.title || '').trim();
-            await BGTStore.persist(data);
-            return { ok: true, title: ws.title };
-          });
-        case 'cloudTest':
-          return await cloudTest(await (await BGTStore.load()).settings);
-        case 'cloudBackupNow': {
-          const res = await cloudBackupNow((await BGTStore.load()).settings);
-          if (res.ok) await makeLocalBackup(true);
-          return res;
         }
-        case 'cloudRestore':
-          return await cloudRestore((await BGTStore.load()).settings);
-        case 'restoreGroup': {
+        await chrome.tabs.create({ url: chrome.runtime.getURL(BGTStore.MANAGER_PAGE) });
+        return { ok: true, fallback: true };
+      }
+      case 'saveWorkspace':
+        // allWindows 必须透传:漏传会让"包含全部窗口"静默失效(仅存聚焦窗口)
+        return await saveWorkspace(msg.title, { closeTabs: msg.closeTabs !== false, allWindows: !!msg.allWindows });
+      case 'restoreWorkspace':
+        return await restoreWorkspace(msg.workspaceId, msg.mode || 'new');
+      case 'renameGroup':
+        // Single Writer:列表级 UI 态写操作收口到 SW 串行执行,
+        // 消除管理页防抖写与 Alt+S 后台保存的双写竞争
+        return await BGTStore.mutate(async () => {
           const data = await BGTStore.load();
           const group = data.groups.find((g) => g.id === msg.groupId);
-          if (!group || !group.tabs.length) return { ok: false, reason: 'empty' };
-          if (msg.mode === 'new') {
-            const win = await chrome.windows.create({ url: group.tabs[0].url, focused: true });
-            for (const t of group.tabs.slice(1)) {
-              await chrome.tabs.create({ windowId: win.id, url: t.url, pinned: t.pinned, active: false });
-            }
-          } else {
-            const cur = await chrome.windows.getCurrent();
-            for (const t of group.tabs) {
-              await chrome.tabs.create({ windowId: cur.id, url: t.url, pinned: t.pinned, active: false });
-            }
-          }
-          return { ok: true, saved: group.tabs.length };
-        }
-        default:
-          return { ok: false, reason: 'unknown-action' };
+          if (!group) return { ok: false, reason: 'not-found' };
+          group.title = String(msg.title || '').trim();
+          await BGTStore.persist(data);
+          return { ok: true, title: group.title };
+        });
+      case 'renameWorkspace':
+        return await BGTStore.mutate(async () => {
+          const data = await BGTStore.load();
+          const ws = data.workspaces.find((w) => w.id === msg.workspaceId);
+          if (!ws) return { ok: false, reason: 'not-found' };
+          ws.title = String(msg.title || '').trim();
+          await BGTStore.persist(data);
+          return { ok: true, title: ws.title };
+        });
+      case 'cloudTest':
+        return await cloudTest(await (await BGTStore.load()).settings);
+      case 'cloudBackupNow': {
+        const res = await cloudBackupNow((await BGTStore.load()).settings);
+        if (res.ok) await makeLocalBackup(true);
+        return res;
       }
-    } catch (e) {
-      return { ok: false, reason: String(e && e.message || e) };
+      case 'cloudRestore':
+        return await cloudRestore(await (await BGTStore.load()).settings);
+      case 'restoreGroup': {
+        const data = await BGTStore.load();
+        const group = data.groups.find((g) => g.id === msg.groupId);
+        if (!group || !group.tabs.length) return { ok: false, reason: 'empty' };
+        if (msg.mode === 'new') {
+          const win = await chrome.windows.create({ url: group.tabs[0].url, focused: true });
+          for (const t of group.tabs.slice(1)) {
+            await chrome.tabs.create({ windowId: win.id, url: t.url, pinned: t.pinned, active: false });
+          }
+        } else {
+          const cur = await chrome.windows.getCurrent();
+          for (const t of group.tabs) {
+            await chrome.tabs.create({ windowId: cur.id, url: t.url, pinned: t.pinned, active: false });
+          }
+        }
+        return { ok: true, saved: group.tabs.length };
+      }
+      default:
+        return { ok: false, reason: 'unknown-action' };
     }
-  })().then(sendResponse);
-  return true; // 异步应答
+  } catch (e) {
+    return { ok: false, reason: String(e && e.message || e) };
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  (async () => {
+    sendResponse(await handleMessage(msg));
+  })();
+  return true; // 异步应答:保持通道打开
 });
 
 /* ---------------- 快捷键 ---------------- */
@@ -718,10 +776,28 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-let menuTimer = null;
-function scheduleMenuRebuild() {
-  clearTimeout(menuTimer);
-  menuTimer = setTimeout(() => { rebuildContextMenus().catch(() => {}); }, 800);
+/**
+ * 重建右键菜单:刻意**不使用 setTimeout 防抖**。
+ * service-worker.md 规则 3:计时器随 SW 回收而消失 —— 若 SW 在防抖窗口内被回收,
+ * 菜单就永远停在旧内容上(没有任何后续事件会来补)。改为"在飞则合并"的循环:
+ * 没有计时器、也不会漏更新。rebuildContextMenus 内部有指纹守卫,内容未变时立即返回,
+ * 所以循环会迅速收敛。
+ */
+let menuBusy = false;
+let menuDirty = false;
+async function scheduleMenuRebuild() {
+  if (menuBusy) { menuDirty = true; return; }
+  menuBusy = true;
+  try {
+    do {
+      menuDirty = false;
+      await rebuildContextMenus();
+    } while (menuDirty);
+  } catch (e) {
+    /* 菜单重建失败不影响主功能 */
+  } finally {
+    menuBusy = false;
+  }
 }
 
 if (chrome.alarms) {
