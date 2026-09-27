@@ -27,9 +27,11 @@ export function render() {
   $('#statTabs').textContent = BGTStore.totalTabCount(state.data);
   $('#statWorkspaces').textContent = state.data.workspaces.length;
   $('#sortLabel').textContent = SORT_LABELS[state.data.settings.sortMode] || tr('手动排序');
+  $('#viewToday').classList.toggle('active', state.view === 'today');
   $('#viewGroups').classList.toggle('active', state.view === 'groups');
   $('#viewWorkspaces').classList.toggle('active', state.view === 'workspaces');
   $('#viewTimeline').classList.toggle('active', state.view === 'timeline');
+  $('#todayList').hidden = state.view !== 'today';
   $('#groupList').hidden = state.view !== 'groups';
   $('#wsList').hidden = state.view !== 'workspaces';
   $('#timelineList').hidden = state.view !== 'timeline';
@@ -40,7 +42,10 @@ export function render() {
   $('#btnToggleAll').hidden = state.view !== 'groups' || !state.data.groups.length;
   $('#btnClockOutTop').hidden = state.view !== 'workspaces';
   renderWelcome();
-  if (state.view === 'groups') {
+  if (state.view === 'today') {
+    $('#emptyState').hidden = true;
+    renderToday();
+  } else if (state.view === 'groups') {
     $('#btnArchived').textContent = state.data.settings.showArchived ? tr('隐藏归档') : tr('显示归档');
     pruneSelection();
     renderGroups();
@@ -58,10 +63,97 @@ export function render() {
 /* ---------------- 首次引导卡 ---------------- */
 
 function renderWelcome() {
-  const show = state.view === 'groups'
+  const show = state.view === 'today'
     && !state.data.groups.length && !state.data.workspaces.length
     && !state.data.settings.welcomed;
   $('#welcomeCard').hidden = !show;
+}
+
+/* ---------------- Today / Continue 首页(WP-2.2) ---------------- */
+
+/** 今天视图:继续昨天的工作 —— 最近收工的项目(一键开工)+ 今日记录 + 今日摘录 */
+export function renderToday() {
+  const wrap = $('#todayList');
+  wrap.textContent = '';
+  const q = state.query.trim().toLowerCase();
+  const dayKey = (window.BGTGarden && BGTGarden.dayKeyOf) ? BGTGarden.dayKeyOf : null;
+  const today = dayKey ? dayKey(Date.now()) : '';
+
+  $('#mainTitle').textContent = tr('今天');
+  $('#mainSub').textContent = tr('继续昨天的工作 —— 上次收工的项目、今天的记录与摘录');
+
+  // 1) 继续工作:最近收工的项目(最多 6 个,收工时间倒序)
+  const matchWs = (w) => !q
+    || (w.title || '').toLowerCase().includes(q)
+    || w.tabs.some((t) => (t.title || '').toLowerCase().includes(q)
+      || (t.url || '').toLowerCase().includes(q));
+  const recent = state.data.workspaces.filter(matchWs)
+    .slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
+  wrap.appendChild(h('p', { class: 'tl-section__label', text: tr('继续工作') }));
+  if (recent.length) {
+    const frag = document.createDocumentFragment();
+    for (const w of recent) frag.appendChild(buildTodayWsCard(w));
+    wrap.appendChild(frag);
+  } else {
+    wrap.appendChild(h('p', {
+      class: 'today__empty',
+      text: tr('还没有收工过 —— 用 Alt+Shift+W 收工一次,这里就成为你的「继续昨天的工作」。'),
+    }));
+  }
+
+  // 2) 今日收工记录(点击进入当时现场)
+  if (dayKey) {
+    const recs = (state.data.records || [])
+      .filter((r) => dayKey(r.createdAt) === today
+        && (!q || (r.title || '').toLowerCase().includes(q)));
+    if (recs.length) {
+      wrap.appendChild(h('p', { class: 'tl-section__label', text: tr('今日收工 {n} 次', { n: recs.length }) }));
+      for (const r of recs.slice().reverse()) {
+        const time = new Date(r.createdAt).toTimeString().slice(0, 5);
+        wrap.appendChild(h('button', {
+          class: 'today__rec', type: 'button', 'data-rec': r.id,
+          title: tr('点击查看当时现场'),
+          text: time + ' ' + (r.title || tr('记录')) + '(' + (r.tabs || []).length + ')',
+        }));
+      }
+    }
+
+    // 3) 今日摘录(悬停显示快照;项目归属来自采集瞬间的窗口绑定)
+    const excs = (state.data.excerpts || [])
+      .filter((x) => dayKey(x.savedAt) === today);
+    if (excs.length) {
+      wrap.appendChild(h('p', { class: 'tl-section__label', text: tr('今日摘录') }));
+      for (const x of excs.slice().reverse()) {
+        const ws = x.workspaceId ? state.data.workspaces.find((w) => w.id === x.workspaceId) : null;
+        wrap.appendChild(h('div', {
+          class: 'today__exc', title: x.text,
+          text: '> ' + (x.text.length > 80 ? x.text.slice(0, 80) + '…' : x.text)
+            + (ws ? '(' + tr('项目:{name}', { name: ws.title || tr('未命名') }) + ')' : ''),
+        }));
+      }
+    }
+  }
+}
+
+function buildTodayWsCard(w) {
+  const hueVal = hueOf(w.id);
+  const winCount = (w.windows && w.windows.length) || 1;
+  const meta = (winCount > 1
+    ? tr('{t} 个标签 · {w} 个窗口 · 收于 {time}', { t: w.tabs.length, w: winCount, time: relTime(w.createdAt) })
+    : tr('{n} 个标签 · 收于 {time}', { n: w.tabs.length, time: relTime(w.createdAt) }))
+    + (w.lastRestoredAt ? ' · ' + tr('开工于 {time}', { time: relTime(w.lastRestoredAt) }) : '');
+  return h('article', { class: 'today__ws', 'data-id': w.id },
+    h('span', { class: 'tab__avatar', text: firstChar(w.title || tr('未命名')), style: `--h:${hueVal}` }),
+    h('div', { class: 'today__ws-main' },
+      h('span', { class: 'today__ws-title', text: w.title || tr('未命名工作区') }),
+      h('span', { class: 'group__meta', text: meta }),
+    ),
+    h('div', { class: 'today__ws-actions' },
+      h('button', { class: 'btn btn--primary btn--sm', type: 'button', 'data-act': 'today-open' }, tr('开工')),
+      h('button', { class: 'iconbtn iconbtn--dots', type: 'button', 'data-act': 'today-open-menu',
+        title: tr('更多开工方式'), html: ICONS.dots }),
+    ),
+  );
 }
 
 /* ---------------- 时间轴视图 ---------------- */

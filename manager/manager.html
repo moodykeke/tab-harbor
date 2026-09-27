@@ -94,18 +94,19 @@
     <!-- ============ 主区域 ============ -->
     <main class="main">
       <div class="viewbar" role="tablist">
+        <button class="viewbar__btn" id="viewToday" type="button" role="tab">今天</button>
         <button class="viewbar__btn active" id="viewGroups" type="button" role="tab">分组</button>
         <button class="viewbar__btn" id="viewWorkspaces" type="button" role="tab">工作区<span id="viewWsCount" hidden></span></button>
         <button class="viewbar__btn" id="viewTimeline" type="button" role="tab" title="按天浏览保存历史">时间轴</button>
       </div>
 
-      <!-- 首次引导卡 -->
+      <!-- 首次引导卡(WP-2.4:以"继续昨天的工作"为主线) -->
       <div class="welcome" id="welcomeCard" hidden>
         <p class="welcome__title">欢迎使用 Tab Harbor · 标签港湾</p>
         <ol class="welcome__steps">
-          <li><b>保存</b> —— 点击「保存当前窗口」,把杂乱标签页收进港湾(快捷键 <kbd>Alt+S</kbd>)</li>
-          <li><b>整理</b> —— 拖拽分组、按域名整理、置顶常用分组</li>
-          <li><b>收工</b> —— 下班前「存为工作区」并关闭标签,明天一键开工</li>
+          <li><b>收工</b> —— 下班前「存为工作区」并关闭标签(快捷键 <kbd>Alt+Shift+W</kbd>)</li>
+          <li><b>开工</b> —— 明天打开管理页,首页就是「继续昨天的工作」:一键恢复上次的现场</li>
+          <li><b>积累</b> —— 期间选中文字可右键存为摘录;时间轴会记住每个工作现场</li>
         </ol>
         <div class="welcome__actions">
           <button class="btn btn--primary" id="btnWelcomeSave" type="button">第一步:保存当前窗口标签</button>
@@ -130,6 +131,7 @@
         </div>
       </header>
 
+      <div id="todayList" hidden></div>
       <div class="groups" id="groupList"></div>
       <div class="groups" id="wsList" hidden></div>
       <div id="timelineList" hidden></div>

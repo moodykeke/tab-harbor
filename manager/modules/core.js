@@ -5,9 +5,9 @@
  */
 
 export const state = {
-  data: null,         // { version, groups, workspaces, settings }
+  data: null,         // { version, groups, workspaces, records, excerpts, settings }
   query: '',          // 搜索词
-  view: 'groups',     // groups | workspaces | timeline
+  view: 'today',      // today(默认:继续昨天的工作,WP-2.2)| groups | workspaces | timeline
   dragInfo: null,     // { type: 'tab'|'group', groupId, tabId? }
   menuState: null,    // 当前打开的自绘菜单 { el, anchor, cleanup }
   selected: new Set(),    // 批量操作:选中的分组 id

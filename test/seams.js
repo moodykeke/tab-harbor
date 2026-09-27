@@ -242,5 +242,22 @@ for (const page of PAGES) {
   });
 }
 
+/* ---------------- D. 首屏契约(WP-2.2:先有覆盖,再动首页) ---------------- */
+
+test('D. today 为默认视图且首屏 id 齐备(改动首屏必须保住这条契约)', () => {
+  const html = read('manager/manager.html');
+  for (const id of ['viewToday', 'todayList', 'welcomeCard']) {
+    assert(html.includes('id="' + id + '"'), 'manager.html 缺 #' + id + ' —— 首屏契约被破坏');
+  }
+  const core = read('manager/modules/core.js');
+  assert(/view:\s*'today'/.test(core), '默认视图必须是 today(继续昨天的工作,WP-2.2)');
+  const renderSrc = read('manager/modules/render.js');
+  assert(renderSrc.includes('export function renderToday'), '渲染层必须实现 today 视图');
+  const eventsSrc = read('manager/modules/events.js');
+  assert(eventsSrc.includes("$('#todayList').addEventListener"), 'today 容器必须有自己的事件委托');
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
+
+
 process.exit(failed ? 1 : 0);

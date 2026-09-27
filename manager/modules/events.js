@@ -4,7 +4,7 @@
 import { state, $, $$, h, send, persistAndRender, persistAndRenderSoon } from './core.js';
 import { ICONS, SORT_LABELS, THEME_LABELS } from './icons.js';
 import { toast, openMenu } from './ui.js';
-import { render, renderGroups, renderWorkspaces, applySearchLight, structureToken, updateBatchBar, showKbdFocus } from './render.js';
+import { render, renderGroups, renderWorkspaces, renderToday, applySearchLight, structureToken, updateBatchBar, showKbdFocus } from './render.js';
 import {
   restoreGroup, deleteGroup, removeTab, addCurrentTabToGroup, newGroup, doSave,
   openDupMenu, openDupDialog, openRestoreMenu, openGroupMenu, jumpToGroup,
@@ -242,12 +242,18 @@ export function bindEvents() {
   const searchInput = $('#searchInput');
   searchInput.addEventListener('input', () => {
     state.query = searchInput.value;
+    if (state.view === 'today') { renderToday(); return; }
     if (state.view === 'workspaces') { renderWorkspaces(); return; }
     if (structureToken() === state.renderToken) applySearchLight();
     else renderGroups();
   });
 
-  // 视图切换:分组 / 工作区 / 时间轴
+  // 视图切换:今天 / 分组 / 工作区 / 时间轴
+  $('#viewToday').addEventListener('click', () => {
+    if (state.view === 'today') return;
+    state.view = 'today';
+    render();
+  });
   $('#viewGroups').addEventListener('click', () => {
     if (state.view === 'groups') return;
     state.view = 'groups';
@@ -262,6 +268,26 @@ export function bindEvents() {
     if (state.view === 'timeline') return;
     state.view = 'timeline';
     render();
+  });
+
+  // 今天视图(WP-2.2):记录 → 当时现场;项目卡片 → 开工(复用工作区动作)
+  $('#todayList').addEventListener('click', (e) => {
+    const recEl = e.target.closest('[data-rec]');
+    if (recEl) { openRecordDialogById(recEl.dataset.rec); return; }
+    const actEl = e.target.closest('[data-act]');
+    const card = e.target.closest('.today__ws');
+    if (!card || !actEl) return;
+    const ws = state.data.workspaces.find((x) => x.id === card.dataset.id);
+    if (!ws) return;
+    if (actEl.dataset.act === 'today-open') {
+      wsRestore(ws, 'new');
+    } else if (actEl.dataset.act === 'today-open-menu') {
+      openMenu(actEl, [
+        { label: tr('在新窗口打开'), icon: ICONS.play, onPick: () => wsRestore(ws, 'new') },
+        { label: tr('恢复到当前窗口'), icon: ICONS.tabs, onPick: () => wsRestore(ws, 'current') },
+        { label: tr('替换当前窗口(先清后恢复)'), icon: ICONS.briefcase, onPick: () => wsRestore(ws, 'replace') },
+      ]);
+    }
   });
 
   // 时间轴:分组定位 / 恢复;工作记录 → 当时现场
@@ -443,6 +469,7 @@ export function bindEvents() {
     const tag = document.activeElement ? document.activeElement.tagName : '';
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
     if ($('dialog[open]') || state.menuState) return;
+    if (state.view === 'today' || state.view === 'timeline') return; // 今天/时间轴视图不参与卡片键盘导航
     const container = state.view === 'workspaces' ? $('#wsList') : $('#groupList');
     const cards = $$(container.id === 'wsList' ? '#wsList .ws' : '#groupList .group:not([hidden])');
     if (!cards.length) return;
