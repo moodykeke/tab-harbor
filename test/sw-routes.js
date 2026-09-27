@@ -373,6 +373,59 @@ test('WP-4.1 默认关:激活/聚焦事件零缓冲写、收工记录零 obs(隐
   assert.strictEqual(env.data().records[0].obs, undefined, '未开启时记录不带 obs(零痕迹)');
 });
 
+test('WP-4.4 作者叠加层:obsOverrides 经 saveSettings 落盘,撤销即清空(显式可撤销)', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  const key = BGTStore.normalizeUrl('https://a.com/x').key;
+  const r1 = await env.send({ action: 'saveSettings', patch: { obsOverrides: { [key]: 'dynamic' } } });
+  assert.strictEqual(r1.ok, true);
+  assert.strictEqual(env.data().settings.obsOverrides[key], 'dynamic', '标记落盘');
+  // 非法值被白名单过滤(只接受 dynamic)
+  const r2 = await env.send({ action: 'saveSettings', patch: { obsOverrides: { evil: 'nuke' } } });
+  assert.strictEqual(r2.ok, true);
+  assert.deepStrictEqual(env.data().settings.obsOverrides, {}, '叠加层只接受显式定义的值');
+  // 撤销 = 传回不含该键的整图
+  const r3 = await env.send({ action: 'saveSettings', patch: { obsOverrides: {} } });
+  assert.strictEqual(r3.ok, true);
+  assert.strictEqual(env.data().settings.obsOverrides[key], undefined, '撤销生效');
+});
+
+test('WP-4.2 内容指纹:手势申请 scripting → 页内哈希落清单;内容未变去重,变了入账', async () => {
+  const env = createEnv({ windows: [W1([T(11, 'https://a.com/doc')])], storage: { bgtData: EMPTY() } });
+  await env.fire('contextMenus.onClicked', { menuItemId: 'bgt-contentfp', pageUrl: 'https://a.com/doc' },
+    { id: 11, windowId: 1, url: 'https://a.com/doc', title: '文档' });
+  await env.settle(60);
+  const perms = env.callsOf('permissions.request');
+  assert.strictEqual(perms.length, 1, '应恰好申请一次 scripting');
+  assert.deepStrictEqual(perms[0].args[0], { permissions: ['scripting'] });
+  assert.strictEqual(env.callsOf('scripting.executeScript').length, 1, '页内执行一次');
+  const sets = env.callsOf('storage.local.set').map((c) => c.args[0]).filter((ks) => ks.includes('bgtContentFingerprints'));
+  assert.ok(sets.length >= 1);
+  assert.deepStrictEqual(sets[sets.length - 1].slice().sort(), ['bgtContentFingerprints', 'bgtMeta'], '只写指纹键 + meta');
+  const d = env.data();
+  assert.strictEqual(d.contentFingerprints.length, 1);
+  assert.ok(/^[0-9a-f]{64}$/.test(d.contentFingerprints[0].hash), '64 位十六进制哈希');
+  // 身份索引计入(fp 来源,refTitle 带 fp:hash8)
+  const entry = BGTStore.lookupIndex(BGTStore.buildUrlIdentity(d), 'https://a.com/doc');
+  const fpOcc = entry.occurrences.find((o) => o.source === 'fp');
+  assert.ok(fpOcc && fpOcc.refTitle.startsWith('fp:'), '索引计入且 refTitle 携带指纹标识');
+
+  // 内容去重:同 url 同 hash(hash 由 (url,salt) 决定)→ 不新增、零写
+  const writesBefore = env.callsOf('storage.local.set').length;
+  await env.fire('contextMenus.onClicked', { menuItemId: 'bgt-contentfp', pageUrl: 'https://a.com/doc' },
+    { id: 11, windowId: 1, url: 'https://a.com/doc', title: '文档' });
+  await env.settle(60);
+  assert.strictEqual(env.callsOf('storage.local.set').length, writesBefore, '内容未变不重复入账');
+  assert.strictEqual(env.data().contentFingerprints.length, 1);
+
+  // 内容变了(换盐)→ 新指纹入账
+  globalThis.__fpSalt = 'v2';
+  await env.fire('contextMenus.onClicked', { menuItemId: 'bgt-contentfp', pageUrl: 'https://a.com/doc' },
+    { id: 11, windowId: 1, url: 'https://a.com/doc', title: '文档' });
+  await env.settle(60);
+  assert.strictEqual(env.data().contentFingerprints.length, 2, 'hash 变化 ⇒ 新观测');
+  globalThis.__fpSalt = undefined;
+});
+
 test('WP-4.3 阅读路径导出:轨迹顺序落 garden 托管区段;空轨迹/无 garden 干净返回', async () => {
   const activeTab = Object.assign(T(11, 'https://a.com/x'), { active: true });
   const env = createEnv({ windows: [W1([activeTab])], storage: { bgtData: EMPTY() }, gardenHandle: true });

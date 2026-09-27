@@ -553,7 +553,7 @@ function stubStorage(initial) {
 }
 
 const K = { meta: 'bgtMeta', groups: 'bgtGroups', ws: 'bgtWorkspaces', rec: 'bgtRecords', exc: 'bgtExcerpts' };
-const ALL_KEYS = [K.groups, K.meta, K.rec, K.ws, K.exc, 'bgtPageSnapshots'].sort(); // 全量写 = 全部集合键 + meta,单次 set(WP-5.4 后含快照清单键)
+const ALL_KEYS = [K.groups, K.meta, K.rec, K.ws, K.exc, 'bgtPageSnapshots', 'bgtContentFingerprints'].sort(); // 全量写 = 全部集合键 + meta,单次 set(WP-5.4 后含快照清单键)
 
 function legacyBlob() {
   return {
@@ -980,6 +980,25 @@ test('5.3 变化摘要:项目来源集变化 = 同一工作区最近两次收工
   assert.strictEqual(pc.wsTitle, '项目甲');
   assert.deepStrictEqual(pc.added, ['https://c.com/3']);
   assert.deepStrictEqual(pc.removed, ['https://a.com/1']);
+});
+
+test('4.2 事实切分:标题全同但正文指纹不同 ⇒ versioned(§7.1 唯一可说"内容确已变更"的形态)', () => {
+  const data = BGTStore.emptyData();
+  data.records = [1, 2].map((i) => BGTStore.makeRecord({
+    id: 'r' + i, title: '记' + i, createdAt: 100 * i,
+    tabs: [{ url: 'https://a.com/x', title: '不变的设计稿', savedAt: 100 * i }],
+  }));
+  data.contentFingerprints = [1, 2].map((i) => BGTStore.normalizeContentFp({
+    id: 'cf' + i, url: 'https://a.com/x', hash: (i === 1 ? 'a1'.repeat(32) : 'c3'.repeat(32)), at: 100 * i, title: '不变的设计稿',
+  }));
+  const entry = BGTStore.lookupIndex(BGTStore.buildUrlIdentity(data), 'https://a.com/x');
+  const c = BGTStore.classifyStability(entry);
+  assert.strictEqual(c.verdict, 'versioned', '指纹不同 ⇒ 事实上的版本边界');
+  assert.ok(c.reasons.join().includes('内容确已变更'), '理由必须是有据的措辞');
+  // 对照:只有一个指纹 ⇒ 仍是 stable(标题一致)
+  data.contentFingerprints = data.contentFingerprints.slice(0, 1);
+  const entry2 = BGTStore.lookupIndex(BGTStore.buildUrlIdentity(data), 'https://a.com/x');
+  assert.strictEqual(BGTStore.classifyStability(entry2).verdict, 'stable');
 });
 
 run().then(() => {

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "short_name": "Tab Harbor",
-  "version": "3.23.0",
+  "version": "3.24.0",
   "description": "__MSG_extDesc__",
   "minimum_chrome_version": "116",
   "icons": {
@@ -37,7 +37,8 @@
     "alarms",
     "tabGroups",
     "contextMenus",
-    "sidePanel"
+    "sidePanel",
+    "activeTab"
   ],
   "commands": {
     "save-current-window": {
@@ -59,7 +60,7 @@
       "description": "__MSG_cmdSaveWorkspace__"
     }
   },
-  "optional_permissions": ["pageCapture"],
+  "optional_permissions": ["pageCapture", "scripting"],
   "optional_host_permissions": [
     "http://*/*",
     "https://*/*"

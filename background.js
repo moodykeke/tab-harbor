@@ -607,6 +607,11 @@ async function rebuildContextMenus() {
     title: tr('把此页面存为完整快照(MHTML)'),
     contexts: ['page'],
   });
+  create({
+    id: 'bgt-contentfp', // WP-4.2(T1):可选 scripting + activeTab(手势),页内计算哈希,零常驻能力
+    title: tr('为此页面生成内容指纹'),
+    contexts: ['page'],
+  });
   const groups = data.groups.filter((g) => !g.archived).slice(0, 8);
   if (groups.length) {
     create({
@@ -656,6 +661,41 @@ async function addTabToGroup(groupId, tab) {
   group.collapsed = false;
   await BGTStore.persist(data);
   return true;
+}
+
+/** WP-4.2(T1):正文指纹。手势纪律:scripting 的权限申请必须在本函数第一个 await;
+ *  activeTab 在右键手势中自动授予该页临时访问(零常驻能力)。
+ *  哈希在**页面上下文**内计算(整页 HTML 不出标签页);同 url 且 hash 未变的
+ *  重复采集在写入端跳过(白送的内容去重)。 */
+async function captureContentFingerprint(tab) {
+  if (!tab || tab.id == null || !tab.url || !/^https?:/i.test(tab.url)) return false;
+  try {
+    const granted = await chrome.permissions.request({ permissions: ['scripting'] });
+    if (!granted) return false;
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async function () {
+        const html = document.documentElement.outerHTML;
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(html));
+        let hex = '';
+        for (const b of new Uint8Array(buf)) hex += b.toString(16).padStart(2, '0');
+        return { len: html.length, head: html.replace(/\s+/g, ' ').trim().slice(0, 120), hash: hex };
+      },
+    });
+    const fp = results && results[0] && results[0].result;
+    if (!fp || !/^[0-9a-f]{64}$/.test(fp.hash || '')) return false;
+    const data = await BGTStore.load();
+    // 内容去重:该 url 最新指纹 hash 相同 ⇒ 内容未变,不重复入账
+    const prev = (data.contentFingerprints || []).find((x) => x.url === tab.url);
+    if (prev && prev.hash === fp.hash) return true;
+    data.contentFingerprints.unshift(BGTStore.normalizeContentFp({
+      url: tab.url, title: (tab && tab.title) || '', hash: fp.hash, len: fp.len, head: fp.head, at: Date.now(),
+    }));
+    await BGTStore.persist(data, { contentFingerprints: true });
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 /** WP-5.4(T2):把页面存为完整快照(MHTML)。
@@ -710,6 +750,8 @@ async function onContextMenuClicked(info, tab) {
     acted = true;
   } else if (String(info.menuItemId).startsWith('g:')) {
     acted = await addTabToGroup(String(info.menuItemId).slice(2), tab);
+  } else if (info.menuItemId === 'bgt-contentfp') {
+    acted = await captureContentFingerprint(tab);
   } else if (info.menuItemId === 'bgt-snapshot') {
     // WP-5.4(T2):完整快照。手势纪律:pageCapture 的权限申请必须在本分支
     // 第一个 await 之前发起(saveFullSnapshot 的首语句就是 permissions.request)

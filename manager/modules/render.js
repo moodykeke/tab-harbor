@@ -508,7 +508,9 @@ function buildTabRow(t, hueVal, gid, urlIndex) {
   const refs = identity ? identity.occurrences : [];
   let dupBadge = null;
   if (dupCount > 1) {
-    const versions = BGTStore.sourceVersions(identity);
+    const ovKey = BGTStore.normalizeUrl(t.url).key;
+    const overridden = ((state.data.settings.obsOverrides || {})[ovKey] === 'dynamic');
+    const versions = overridden ? [] : BGTStore.sourceVersions(identity); // WP-4.4 作者叠加:显式标记 ⇒ 回到 ×N
     if (versions.length > 1) {
       const tip = tr('该网址有 {n} 个版本:', { n: versions.length }) + '\n' +
         versions.map((v, i) => 'v' + (i + 1) + ' · ' + v.title + ' · ' + fmtDate(v.firstAt) +

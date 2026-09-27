@@ -20,6 +20,8 @@
   const EXCERPT_TEXT_MAX = 500;
   const PAGE_SNAPS_KEY = 'bgtPageSnapshots'; // WP-5.4:完整快照清单(MHTML 本体在磁盘)
   const PAGE_SNAPS_MAX = 200;
+  const CONTENT_FP_KEY = 'bgtContentFingerprints'; // WP-4.2:正文指纹(T1)
+  const CONTENT_FP_MAX = 300;
   const LEGACY_BACKUP_KEY = 'bgtData_v2_backup';
   const STORAGE_SCHEMA = 3;               // 存储布局版本(数据形状仍是 DATA_VERSION)
   const SNAPSHOT_KEY = 'bgtSnapshots';
@@ -44,6 +46,8 @@
     dailyBackup: true,        // 每日本地全量备份(分组+工作区,保留 7 份)
     webdav: null,             // 云备份配置 {url,user,pass,dir,auto} — 密码仅存本机
     welcomed: false,          // 首次引导卡是否已确认
+    obsOverrides: null,        // WP-4.4 作者叠加层:urlKey → 'dynamic'(用户显式标记"不再跟踪版本";
+                              // 只叠加显示层,证据层永不改 —— 显式、可撤销、绝不静默)
     observation: false,       // 决策 3:opt-in 观测(打开次数/停留)。默认必须关;
                               // 记录地址与标题,不记录内容、按键、滚动;缓冲只住会话
   };
@@ -78,6 +82,7 @@
       records: [],
       excerpts: [],
       pageSnapshots: [],
+      contentFingerprints: [],
       settings: Object.assign({}, DEFAULT_SETTINGS),
     };
   }
@@ -98,6 +103,15 @@
 
   function normalizeSettings(raw) {
     const out = Object.assign({}, DEFAULT_SETTINGS, raw && typeof raw === 'object' ? raw : {});
+    if (raw && raw.obsOverrides && typeof raw.obsOverrides === 'object' && !Array.isArray(raw.obsOverrides)) {
+      const cleanOv = {};
+      for (const k of Object.keys(raw.obsOverrides)) {
+        if (raw.obsOverrides[k] === 'dynamic') cleanOv[k] = 'dynamic';
+      }
+      out.obsOverrides = cleanOv;
+    } else {
+      out.obsOverrides = null;
+    }
     out.webdav = Object.assign({}, WEBDAV_DEFAULTS,
       raw && raw.webdav && typeof raw.webdav === 'object' ? raw.webdav : {});
     return out;
@@ -255,6 +269,7 @@
       records: Array.isArray(d.records) ? d.records.map(normalizeRecord).slice(-RECORDS_MAX) : [],
       excerpts: Array.isArray(d.excerpts) ? d.excerpts.map(normalizeExcerpt).slice(-EXCERPTS_MAX) : [],
       pageSnapshots: Array.isArray(d.pageSnapshots) ? d.pageSnapshots.map(normalizePageSnap).slice(-PAGE_SNAPS_MAX) : [],
+      contentFingerprints: Array.isArray(d.contentFingerprints) ? d.contentFingerprints.map(normalizeContentFp).slice(-CONTENT_FP_MAX) : [],
       settings: normalizeSettings(d.settings),
     };
     if (d.updatedAt) out.updatedAt = d.updatedAt;
@@ -263,7 +278,7 @@
 
   /** 读取全部数据(合并视图);发现 v3 分键直接组装,v2 单键自动迁移,发现 v1 结构(tabGroups/options)时自动迁移 */
   async function load() {
-    const res = await chrome.storage.local.get([META_KEY, GROUPS_KEY, WORKSPACES_KEY, RECORDS_KEY, EXCERPTS_KEY, PAGE_SNAPS_KEY, STORE_KEY, 'tabGroups', 'options']);
+    const res = await chrome.storage.local.get([META_KEY, GROUPS_KEY, WORKSPACES_KEY, RECORDS_KEY, EXCERPTS_KEY, PAGE_SNAPS_KEY, CONTENT_FP_KEY, STORE_KEY, 'tabGroups', 'options']);
     const meta = res[META_KEY];
     if (meta && typeof meta === 'object') {
       return normalizeData({
@@ -272,6 +287,7 @@
         records: expandRecords(res[RECORDS_KEY]), // 磁盘为增量形态(ADR-002),读取即展开为全量
         excerpts: res[EXCERPTS_KEY],
         pageSnapshots: res[PAGE_SNAPS_KEY],
+        contentFingerprints: res[CONTENT_FP_KEY],
         settings: meta.settings,
         updatedAt: meta.updatedAt,
       });
@@ -357,12 +373,28 @@
     if (all || collections.records) out[RECORDS_KEY] = encodeRecords(data.records); // ADR-002:增量编码 + 窗口
     if (all || collections.excerpts) out[EXCERPTS_KEY] = (data.excerpts || []).map(normalizeExcerpt).slice(-EXCERPTS_MAX);
     if (all || collections.pageSnapshots) out[PAGE_SNAPS_KEY] = (data.pageSnapshots || []).map(normalizePageSnap).slice(-PAGE_SNAPS_MAX);
+    if (all || collections.contentFingerprints) out[CONTENT_FP_KEY] = (data.contentFingerprints || []).map(normalizeContentFp).slice(-CONTENT_FP_MAX);
     return out;
   }
 
   /** 是否为本上下文刚写入的变更(用于跳过 storage.onChanged 自回声) */
   function isSelfWrite(updatedAt) {
     return !!updatedAt && updatedAt === lastWrittenAt;
+  }
+
+  /** 正文指纹(WP-4.2,T1):activeTab+scripting 手势触发、页内计算 SHA-256,零常驻能力。
+   *  同 url 且 hash 相同的最新指纹在写入端去重(白送的内容去重)。 */
+  function normalizeContentFp(raw) {
+    const x = raw && typeof raw === 'object' ? raw : {};
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : genId('cf'),
+      url: (x.url || '').trim(),
+      title: typeof x.title === 'string' ? x.title : '',
+      hash: (typeof x.hash === 'string' && /^[0-9a-f]{64}$/.test(x.hash)) ? x.hash : '',
+      len: Math.max(0, Number(x.len) || 0),
+      head: String(x.head || '').slice(0, 120),
+      at: Number(x.at) || Date.now(),
+    };
   }
 
   /** 页面快照清单条目(WP-5.4):内容在磁盘,这里只有指针与校验信息 */
@@ -537,6 +569,7 @@
       records: data.records || [],
       excerpts: data.excerpts || [],
       pageSnapshots: data.pageSnapshots || [],
+      contentFingerprints: data.contentFingerprints || [],
       settings,
     };
   }
@@ -556,7 +589,7 @@
 
   /** 当前全量状态指纹(本地备份去重与云端同步判定共用,不含运行态字段) */
   function stateFingerprint(payload) {
-    return JSON.stringify([payload.groups, payload.workspaces, payload.records, payload.excerpts, payload.pageSnapshots, payload.settings]);
+    return JSON.stringify([payload.groups, payload.workspaces, payload.records, payload.excerpts, payload.pageSnapshots, payload.contentFingerprints, payload.settings]);
   }
 
   async function loadBackups() {
@@ -719,6 +752,7 @@
     for (const r of data.records || []) { fpField('R'); fpField(r.id); fpField(r.title); fpField(r.createdAt); fpTabs(r.tabs); }
     for (const x of data.excerpts || []) { fpField('X'); fpField(x.id); fpField(x.url); fpField(x.text); fpField(x.tabTitle); fpField(x.savedAt); fpField(x.workspaceId); }
     for (const ps of data.pageSnapshots || []) { fpField('P'); fpField(ps.id); fpField(ps.url); fpField(ps.hash); fpField(ps.path); fpField(ps.at); }
+    for (const cf of data.contentFingerprints || []) { fpField('F'); fpField(cf.id); fpField(cf.url); fpField(cf.hash); fpField(cf.len); fpField(cf.at); }
     return fp0 + ',' + fp1;
   }
 
@@ -764,6 +798,7 @@
         const eventId = source === 'record' ? 'ev:' + refId
           : source === 'workspace' ? 'ev:' + (wsEvent.get(refId) || refId + ':static')
           : source === 'excerpt' ? 'ev:x:' + refId
+          : source === 'fp' ? 'ev:f:' + refId
           : 'ev:g:' + refId;
         entry.occurrences.push({
           source, refId, refTitle: refTitle || '', tabTitle: t.title || t.url, at, eventId,
@@ -778,6 +813,12 @@
     for (const x of data.excerpts || []) {
       const snip = x.text ? x.text.slice(0, 80) : x.url;
       add('excerpt', x.id, x.tabTitle || '', [{ url: x.url, title: snip, savedAt: x.savedAt }], x.savedAt);
+    }
+    // 正文指纹(WP-4.2):内容级观测。tabTitle 用页面标题(不裂标题谱系);
+    // refTitle 携带 'fp:<hash8>' 供谱系/分类器读取 —— hash 不同即内容事实变化
+    for (const cf of data.contentFingerprints || []) {
+      if (!cf.hash) continue;
+      add('fp', cf.id, 'fp:' + cf.hash.slice(0, 8), [{ url: cf.url, title: cf.title || cf.url, savedAt: cf.at }], cf.at);
     }
     for (const entry of index.values()) {
       entry.occurrences.sort(function (a, b) { return a.at - b.at; });
@@ -802,6 +843,7 @@
       records: (payload.records || []).map((r) => normalizeRecord(r)).slice(-RECORDS_MAX),
       excerpts: (payload.excerpts || []).map((x) => normalizeExcerpt(x)).slice(-EXCERPTS_MAX),
       pageSnapshots: (payload.pageSnapshots || []).map((x) => normalizePageSnap(x)).slice(-PAGE_SNAPS_MAX),
+      contentFingerprints: (payload.contentFingerprints || []).map((x) => normalizeContentFp(x)).slice(-CONTENT_FP_MAX),
       settings,
     };
   }
@@ -845,7 +887,7 @@
     const byKey = new Map();
     const passthrough = [];
     for (const o of occ) {
-      if (o.source === 'excerpt') { passthrough.push(o); continue; }
+      if (o.source === 'excerpt' || o.source === 'fp') { passthrough.push(o); continue; }
       const k = noiseFoldTitle(o.tabTitle) || '(空)';
       let v = byKey.get(k);
       if (!v) {
@@ -916,11 +958,29 @@
     if (savedByUser) base.reasons = ['存在收藏引用(被主动保存过)'];
 
     if (distinct.length === 1) {
+      // WP-4.2 事实切分:标题全同但正文指纹不同 ⇒ 内容确已变更(§7.1 里唯一
+      // 允许说"内容已变更"的形态 —— 有指纹为证,不是从标题猜的)
+      const fpSame = Array.from(new Set(occ
+        .filter((o) => o.source === 'fp' && typeof o.refTitle === 'string' && o.refTitle.startsWith('fp:'))
+        .map((o) => o.refTitle.slice(3))));
+      if (fpSame.length >= 2) {
+        return Object.assign(base, { verdict: 'versioned', titleChurn: 0,
+          reasons: (base.reasons || []).concat(['标题未变,但正文指纹不同(' + fpSame.length + ' 个)—— 内容确已变更']) });
+      }
       return Object.assign(base, { verdict: 'stable', titleChurn: 0,
         reasons: (base.reasons || []).concat(['历次观测标题一致']) });
     }
     const folded = Array.from(new Set(titles.map(noiseFoldTitle)));
     if (folded.length === 1) {
+      // WP-4.2 事实切分:标题全同但正文指纹不同 ⇒ 内容确已变更(这是 §7.1 里
+      // 唯一允许说"内容已变更"的形态 —— 有指纹为证,不是猜的)
+      const fpHashes = Array.from(new Set(occ
+        .filter((o) => o.source === 'fp' && typeof o.refTitle === 'string' && o.refTitle.startsWith('fp:'))
+        .map((o) => o.refTitle.slice(3))));
+      if (fpHashes.length >= 2) {
+        return Object.assign(base, { verdict: 'versioned', titleChurn: 0,
+          reasons: (base.reasons || []).concat(['标题未变,但正文指纹不同(' + fpHashes.length + ' 个)—— 内容确已变更']) });
+      }
       return Object.assign(base, { verdict: 'stable', titleChurn: 0,
         reasons: (base.reasons || []).concat(['标题差异均为计数/时间噪声(折叠后一致)']) });
     }
@@ -1475,6 +1535,9 @@
     PAGE_SNAPS_KEY: PAGE_SNAPS_KEY,
     PAGE_SNAPS_MAX: PAGE_SNAPS_MAX,
     normalizePageSnap: normalizePageSnap,
+    CONTENT_FP_KEY: CONTENT_FP_KEY,
+    CONTENT_FP_MAX: CONTENT_FP_MAX,
+    normalizeContentFp: normalizeContentFp,
     LEGACY_BACKUP_KEY: LEGACY_BACKUP_KEY,
     STORAGE_SCHEMA: STORAGE_SCHEMA,
     SNAPSHOT_KEY: SNAPSHOT_KEY,

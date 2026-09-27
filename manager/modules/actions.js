@@ -376,6 +376,34 @@ export function openDupDialog() {
       chips.appendChild(chip);
     }
     row.appendChild(chips);
+
+    // WP-4.4 判断面板:判断显式、带理由;作者叠加(不再跟踪版本)显式且可撤销
+    const verdict = BGTStore.classifyStability(entry);
+    const overridden = ((state.data.settings.obsOverrides || {})[entry.key] === 'dynamic');
+    const VL = { single: tr('仅一次观测'), stable: tr('稳定'), versioned: tr('版本化'), dynamic: tr('动态'), unknown: tr('无观测') };
+    const vr = h('div', { class: 'dup-verdict' });
+    vr.appendChild(h('span', {
+      class: 'dup-verdict__label',
+      text: (overridden ? tr('动态(你标记的)') : VL[verdict.verdict] || verdict.verdict)
+        + ' · ' + verdict.reasons.join(';'),
+      title: verdict.reasons.join('
+'),
+    }));
+    const ovBtn = h('button', {
+      class: 'ws-conflict__btn' + (overridden ? ' ws-conflict__btn--on' : ''), type: 'button',
+    }, overridden ? tr('恢复版本跟踪') : tr('不再跟踪版本(动态)'));
+    ovBtn.addEventListener('click', async () => {
+      const map = Object.assign({}, state.data.settings.obsOverrides || {});
+      if (overridden) delete map[entry.key];
+      else map[entry.key] = 'dynamic';
+      const res = await send({ action: 'saveSettings', patch: { obsOverrides: map } });
+      if (res && res.ok) {
+        state.data.settings = res.settings;
+        openDupDialog(); // 重开刷新判断行(显式反馈,不静默)
+      }
+    });
+    vr.appendChild(ovBtn);
+    row.appendChild(vr);
     listEl.appendChild(row);
   }
 

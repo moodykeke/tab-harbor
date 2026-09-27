@@ -191,6 +191,24 @@ function createEnv(opts) {
       },
       onChanged: { addListener: (fn) => on('storage.onChanged', fn) },
     },
+    scripting: {
+      executeScript: ({ target, func }) => {
+        record('scripting.executeScript', [target, String(func).slice(0, 40)]);
+        // 确定性伪页内计算:hash = f(tabId 对应 url, salt);测试用 __fpSalt 换盐即"内容变了"
+        const tab = vmWorldFindTab(target && target.tabId);
+        const url = (tab && tab.url) || 'about:blank';
+        const salt = (globalThis.__fpSalt = globalThis.__fpSalt || 'v1');
+        let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+        const src = url + '|' + salt;
+        for (let i = 0; i < src.length; i += 1) {
+          const c = src.charCodeAt(i);
+          h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+          h2 = Math.imul(h2 + c, 0x85ebca6b) >>> 0;
+        }
+        const hex = (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).repeat(4);
+        return Promise.resolve([{ result: { len: 2048 + (url.length % 97), head: '<html>…' + url.slice(0, 40), hash: hex } }]);
+      },
+    },
     pageCapture: {
       saveAsMHTML: ({ tabId }, cb) => {
         record('pageCapture.saveAsMHTML', [{ tabId }]);
@@ -397,6 +415,7 @@ function createEnv(opts) {
           records: storage.get('bgtRecords') || [],
           excerpts: storage.get('bgtExcerpts') || [],
           pageSnapshots: storage.get('bgtPageSnapshots') || [],
+          contentFingerprints: storage.get('bgtContentFingerprints') || [],
           settings: meta.settings || {},
           updatedAt: meta.updatedAt,
         });
