@@ -16,8 +16,17 @@ Tab Harbor handles only the data you explicitly ask it to save:
 - **Backup settings you type in**: your WebDAV server address, username, and password
   (only if you choose to configure cloud backup).
 
-Tab Harbor does **not** read page contents, does not inject scripts into web pages, and
-does not observe your browsing in the background. It has no content scripts.
+Tab Harbor does **not** read page contents and does not inject scripts into web pages by
+default. It has no content scripts.
+
+**Optional session observation (off by default, opt-in).** If — and only if — you turn on
+"Observation" in settings, Tab Harbor additionally records the **addresses and titles** of
+pages you open or focus, to count visits and dwell time and fold them into your work records
+at clock-out. It never records page contents, keystrokes, or scrolling. This buffer lives
+only in the browser's session storage: it survives service-worker restarts but is **erased
+when the browser closes**, and is cleared after each clock-out fold. A one-click "Clear
+observation buffer" control is always available in settings. Turning the feature off stops
+all recording immediately and leaves no trace.
 
 ## How data is stored
 

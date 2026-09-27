@@ -44,6 +44,8 @@
     dailyBackup: true,        // 每日本地全量备份(分组+工作区,保留 7 份)
     webdav: null,             // 云备份配置 {url,user,pass,dir,auto} — 密码仅存本机
     welcomed: false,          // 首次引导卡是否已确认
+    observation: false,       // 决策 3:opt-in 观测(打开次数/停留)。默认必须关;
+                              // 记录地址与标题,不记录内容、按键、滚动;缓冲只住会话
   };
 
   const WEBDAV_DEFAULTS = { url: '', user: '', pass: '', dir: '', auto: false };
@@ -143,6 +145,16 @@
 
   function normalizeRecord(raw) {
     const r = raw && typeof raw === 'object' ? raw : {};
+    const normObs = function (list) {
+      return (Array.isArray(list) ? list : []).slice(0, 50).map(function (o) {
+        return {
+          url: (o && o.url || '').trim(),
+          title: (o && typeof o.title === 'string') ? o.title : '',
+          visits: Math.max(0, Number(o && o.visits) || 0),
+          dwellMs: Math.max(0, Number(o && o.dwellMs) || 0),
+        };
+      }).filter(function (o) { return !!o.url; });
+    };
     if (r.delta && !r.tabs) {
       // ADR-002 增量形态:仅在未先经 expandRecords 的路径出现,轻校验透传
       const d = r.delta && typeof r.delta === 'object' ? r.delta : {};
@@ -153,6 +165,7 @@
         hash: typeof r.hash === 'string' ? r.hash : '',
         workspaceId: (r.workspaceId && typeof r.workspaceId === 'string') ? r.workspaceId : undefined,
         source: (r.source && typeof r.source === 'string') ? r.source : 'clockout',
+        obs: normObs(r.obs),
         delta: {
           baseId: (d.baseId && typeof d.baseId === 'string') ? d.baseId : '',
           added: Array.isArray(d.added) ? d.added : [],
@@ -181,6 +194,7 @@
       hash: typeof r.hash === 'string' && r.hash ? r.hash : hashTabs(tabs, workspaceId),
       workspaceId: (r.workspaceId && typeof r.workspaceId === 'string') ? r.workspaceId : undefined,
       source: (r.source && typeof r.source === 'string') ? r.source : 'clockout',
+      obs: normObs(r.obs),
     };
   }
 
@@ -1193,6 +1207,7 @@
       out.push({
         id: kept[i].id, createdAt: kept[i].createdAt, title: kept[i].title,
         hash: kept[i].hash, workspaceId: kept[i].workspaceId, source: kept[i].source,
+        obs: kept[i].obs,
         delta: (function () {
           const removedKeys = d.removed.map(function (t) { return normalizeUrl(t.url).key; });
           const actual = (kept[i].tabs || []).map(function (t) { return normalizeUrl(t.url).key; });
@@ -1237,7 +1252,7 @@
           for (const t of map.values()) if (!tabs.includes(t)) tabs.push(t);
           const full = {
             id: rec.id, createdAt: rec.createdAt, title: rec.title, hash: rec.hash,
-            workspaceId: rec.workspaceId, source: rec.source, tabs: tabs,
+            workspaceId: rec.workspaceId, source: rec.source, obs: rec.obs, tabs: tabs,
           };
           byId.set(full.id, full);
           out.push(full);

@@ -360,6 +360,47 @@ test('WP-5.4 未配置 garden:干净失败,零清单写、无假成功反馈', a
   assert.ok(!badge || badge.args[0].text !== '✓', '失败不得闪成功徽章');
 });
 
+test('WP-4.1 默认关:激活/聚焦事件零缓冲写、收工记录零 obs(隐私叙事不变)', async () => {
+  const env = createEnv({ windows: [W1([T(11, 'https://a.com/x')])], storage: { bgtData: EMPTY() } });
+  await env.fire('tabs.onActivated', { tabId: 11, windowId: 1 });
+  await env.fire('windows.onFocusChanged', 1);
+  await env.settle(40);
+  const sessionSets = env.callsOf('storage.session.set');
+  assert.strictEqual(sessionSets.length, 0, '默认关 = 零缓冲写入');
+  const r = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(env.data().records[0].obs, undefined, '未开启时记录不带 obs(零痕迹)');
+});
+
+test('WP-4.1 opt-in:轨迹折叠进记录(打开次数/停留),折叠即清空;一键清除路由', async () => {
+  const activeTab = Object.assign(T(11, 'https://a.com/x'), { active: true }); // onFocusChanged 按 active 查询
+  const env = createEnv({ windows: [W1([activeTab])], storage: { bgtData: EMPTY() } });
+  await env.send({ action: 'saveSettings', patch: { observation: true } }); // 开启(经 META 写,开关即时生效)
+  await env.settle(20);
+  await env.fire('tabs.onActivated', { tabId: 11, windowId: 1 });           // 打开 a.com
+  await env.settle(30);
+  await env.fire('windows.onFocusChanged', 1);                              // 聚焦同窗口(a.com 再计一次)
+  await env.settle(30);
+  const r = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
+  assert.strictEqual(r.ok, true);
+  const rec = env.data().records[0];
+  assert.ok(rec.obs && rec.obs.length >= 1, '折叠结果应进记录');
+  const a = rec.obs.find((o) => o.url.includes('a.com/x'));
+  assert.ok(a, 'a.com 在观测里');
+  assert.strictEqual(a.visits, 2, '激活 + 聚焦各计一次');
+  assert.ok(a.dwellMs > 0, '相邻事件差计停留');
+  // 折叠即清空
+  const trail = await new Promise((res) => env.chrome.storage.session.get('bgtObsTrail', res));
+  assert.strictEqual(trail.bgtObsTrail, undefined, '折叠后缓冲必须清空');
+  // 再次开启又来一条事件,一键清除 → 缓冲空
+  await env.fire('tabs.onActivated', { tabId: 11, windowId: 1 });
+  await env.settle(30);
+  const c = await env.send({ action: 'clearObservation' });
+  assert.strictEqual(c.ok, true);
+  const t2 = await new Promise((res) => env.chrome.storage.session.get('bgtObsTrail', res));
+  assert.strictEqual(t2.bgtObsTrail, undefined, '一键清除生效');
+});
+
 test('2.1b 开工即绑定:绑定窗口里的摘录自动归属该项目(采集瞬间冻结)', async () => {
   const data = EMPTY();
   data.workspaces = [BGTStore.normalizeWorkspace({ id: 'w1', title: '项目A', tabs: [{ url: 'https://a.com/x' }] })];
@@ -574,6 +615,7 @@ test('storage 变化时更新徽章为分组数', async () => {
   const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
   const data = EMPTY();
   data.groups = [BGTStore.normalizeGroup({ title: 'A', tabs: [] }), BGTStore.normalizeGroup({ title: 'B', tabs: [] })];
+  await env.settle(30); // 先让启动链(迁移 → onChanged → 观测开关刷新)落定再取基线
   // ADR-001 后徽章听 bgtGroups;直接写 bgtData(旧键)不再触发,写新键才触发
   const before = env.callsOf('action.setBadgeText').length;
   await env.chrome.storage.local.set({ bgtData: data });

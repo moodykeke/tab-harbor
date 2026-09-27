@@ -141,6 +141,15 @@ function createEnv(opts) {
     };
   }
 
+  // tabs.get 桩的世界查找
+  const vmWorldFindTab = (tabId) => {
+    for (const w of world.windows) {
+      const t = (w.tabs || []).find((x) => x.id === tabId);
+      if (t) return clone(Object.assign({ windowId: w.id }, t));
+    }
+    return undefined;
+  };
+
   /* ---------------- chrome.* ---------------- */
   const chrome = {
     runtime: {
@@ -191,6 +200,12 @@ function createEnv(opts) {
       },
     },
     tabs: {
+      onActivated: { addListener: (fn) => on('tabs.onActivated', fn) },
+      get: (tabId, cb) => {
+        record('tabs.get', [tabId]);
+        const out = vmWorldFindTab(tabId);
+        return cb ? (cb(out), undefined) : Promise.resolve(out);
+      },
       query: (q) => {
         record('tabs.query', [q]);
         q = q || {};
@@ -238,7 +253,9 @@ function createEnv(opts) {
       update: () => Promise.resolve(),
     },
     windows: {
+      WINDOW_ID_NONE: -1,
       onRemoved: { addListener: (fn) => on('windows.onRemoved', fn) },
+      onFocusChanged: { addListener: (fn) => on('windows.onFocusChanged', fn) },
       getAll: (q) => {
         record('windows.getAll', [q]);
         return Promise.resolve(clone(world.windows.map((w) => (q && q.populate ? w : { id: w.id, focused: w.focused }))));

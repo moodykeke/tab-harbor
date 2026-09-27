@@ -15,6 +15,7 @@ const SET_FIELDS = [
   ['setDeleteOnRestore', 'deleteGroupOnRestore'],
   ['setConfirmDelete', 'confirmDelete'],
   ['setAutoSnapshot', 'autoSnapshot'],
+  ['setObservation', 'observation'],
 ];
 
 export function openSettings() {
@@ -27,6 +28,14 @@ export function openSettings() {
   $('#davDir').value = w.dir || '';
   $('#davAuto').checked = w.auto;
   bindGarden();
+  const clearBtn = $('#btnClearObs');
+  if (clearBtn && !clearBtn.dataset.bound) {
+    clearBtn.dataset.bound = '1';
+    clearBtn.addEventListener('click', async () => {
+      const res = await send({ action: 'clearObservation' });
+      toast(res && res.ok ? tr('观测缓冲已清除') : tr('清除失败,后台服务不可用'), !!(res && res.ok));
+    });
+  }
   cloudStatus('idle');
   renderStorageLine();
   renderSnapshots();

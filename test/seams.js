@@ -140,6 +140,7 @@ const SW_CONTRACT = [
   'saveWindow', 'saveAllWindows', 'openManager', 'openSidePanel',
   'saveWorkspace', 'restoreWorkspace', 'renameGroup', 'renameWorkspace',
   'saveSettings',
+  'clearObservation',
   'cloudTest', 'cloudBackupNow', 'cloudRestore', 'restoreGroup',
 ];
 

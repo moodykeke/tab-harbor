@@ -945,6 +945,17 @@ export function openRecordDialog(record) {
   summary.textContent = '';
   summary.appendChild(h('span', { text: tr('{time}', { time: new Date(rec.createdAt).toLocaleString() }) }));
   summary.appendChild(h('span', { text: tr('{n} 个标签', { n: rec.tabs.length }) }));
+  // WP-4.1:opt-in 观测的折叠结果(仅开启过才有;措辞守 §7.1 —— 只说记录到的事实)
+  if (rec.obs && rec.obs.length) {
+    const totalVisits = rec.obs.reduce((n, o) => n + o.visits, 0);
+    const totalDwellMin = Math.round(rec.obs.reduce((n, o) => n + o.dwellMs, 0) / 60000);
+    summary.appendChild(h('span', {
+      title: rec.obs.slice(0, 5).map((o) => o.title || o.url).join('
+'),
+      text: tr('会话内打开 {v} 次 · 停留约 {m} 分({u} 个来源)',
+        { v: totalVisits, m: totalDwellMin, u: rec.obs.length }),
+    }));
+  }
   if (diff) {
     summary.appendChild(h('span', {
       html: '<span class="add">+' + diff.added.length + '</span> <span class="rem">−' + diff.removed.length + '</span> '

@@ -255,6 +255,8 @@ async function saveWorkspace(title, opts) {
   const rec = BGTStore.makeRecord({
     title, createdAt: now, tabs: tabs.map((t) => ({ ...t })), workspaceId: wsId, source: 'clockout',
   });
+  // WP-4.1:opt-in 时把会话轨迹折叠进记录(打开次数/停留;关闭时为 undefined,零痕迹)
+  rec.obs = await foldObservation();
   if (!BGTStore.recordEqualsLast(data.records, rec)) {
     data.records = (data.records || []).concat(rec).slice(-BGTStore.RECORDS_MAX);
     recordCreated = true;
@@ -276,6 +278,78 @@ async function saveWorkspace(title, opts) {
 
 /** 开工:把工作区恢复为新窗口 / 当前窗口 / 替换当前窗口,固定标签原样保留。
  *  多窗口工作区:new 模式逐窗口还原;'current'/'replace' 模式扁平合并进当前窗口。 */
+
+/* ---------------- WP-4.1:观测四元组之 打开次数/停留(决策 3) ----------------
+ * 纪律:① opt-in 且**默认关** —— 关闭时零缓冲写入,隐私叙事与未上线此功能时完全一致;
+ * ② 只记**地址与标题**,不记内容、按键、滚动;③ 缓冲只住 chrome.storage.session
+ * (跨 SW 回收存活、**浏览器关闭即消失**),收工折叠进 Record 后即清空;④ 一键清除。
+ * MV3 纪律:监听器必须顶层注册(规矩 4)—— 处理器按缓存的设置门控,关 = 零记录。 */
+const OBS_KEY = 'bgtObsTrail';
+const OBS_MAX = 500;
+const OBS_DWELL_CAP = 300000; // 单段停留上限 5 分钟(防挂机膨胀)
+
+let observationOn = false; // 缓存;SW 启动初载 + settings 变更时刷新
+async function refreshObservationFlag() {
+  try { observationOn = !!(await BGTStore.load()).settings.observation; }
+  catch (e) { observationOn = false; }
+}
+refreshObservationFlag();
+
+async function recordObsEvent(url, title) {
+  if (observationOn !== true) return;
+  try {
+    const res = await chrome.storage.session.get(OBS_KEY);
+    const trail = (res && res[OBS_KEY]) || [];
+    trail.push({ url: String(url || ''), title: String(title || ''), at: Date.now() });
+    while (trail.length > OBS_MAX) trail.shift();
+    await chrome.storage.session.set({ [OBS_KEY]: trail });
+  } catch (e) { /* 观测失败不影响浏览 */ }
+}
+
+if (chrome.tabs && chrome.tabs.onActivated) {
+  chrome.tabs.onActivated.addListener((info) => {
+    (async () => {
+      try {
+        const tab = await chrome.tabs.get(info.tabId);
+        if (tab && tab.url && /^https?:/i.test(tab.url)) recordObsEvent(tab.url, tab.title);
+      } catch (e) { /* 标签可能已关 */ }
+    })();
+  });
+}
+if (chrome.windows && chrome.windows.onFocusChanged) {
+  chrome.windows.onFocusChanged.addListener((windowId) => {
+    if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, windowId });
+        const t = tabs && tabs[0];
+        if (t && t.url && /^https?:/i.test(t.url)) recordObsEvent(t.url, t.title);
+      } catch (e) { /* 窗口可能已关 */ }
+    })();
+  });
+}
+
+/** 收工时折叠:轨迹 → 每 url 的 {visits, dwellMs}(相邻事件差计停留,单段封顶),折叠即清空 */
+async function foldObservation() {
+  try {
+    const res = await chrome.storage.session.get(OBS_KEY);
+    const trail = (res && res[OBS_KEY]) || [];
+    await chrome.storage.session.remove(OBS_KEY);
+    if (!trail.length) return undefined;
+    const byUrl = new Map();
+    for (let i = 0; i < trail.length; i += 1) {
+      const e = trail[i];
+      const dwell = (i + 1 < trail.length)
+        ? Math.min(Math.max(trail[i + 1].at - e.at, 0), OBS_DWELL_CAP) : 0;
+      const cur = byUrl.get(e.url) || { url: e.url, title: e.title || '', visits: 0, dwellMs: 0 };
+      cur.visits += 1;
+      cur.dwellMs += dwell;
+      if (e.title) cur.title = e.title;
+      byUrl.set(e.url, cur);
+    }
+    return Array.from(byUrl.values()).sort((a, b) => b.dwellMs - a.dwellMs).slice(0, 50);
+  } catch (e) { return undefined; }
+}
 
 /* ---------------- 2.1b:活窗口 ↔ 项目绑定 ----------------
  * 绑定住 chrome.storage.session:跨 SW 回收存活、浏览器关闭即消失 ——
@@ -833,6 +907,10 @@ async function handleMessage(msg) {
           await BGTStore.persist(data, {});
           return { ok: true, settings: data.settings };
         });
+      case 'clearObservation':
+        // 决策 3:一键清除观测缓冲(只住会话,浏览器关闭亦即消失)
+        await chrome.storage.session.remove(OBS_KEY);
+        return { ok: true };
       case 'cloudTest':
         return await cloudTest(await (await BGTStore.load()).settings);
       case 'cloudBackupNow': {
@@ -939,6 +1017,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     updateBadge({ groups: changes[BGTStore.GROUPS_KEY].newValue });
     scheduleMenuRebuild(); // 保持右键菜单里的分组列表最新(防抖,避免频繁重建)
   }
+  if (changes[BGTStore.META_KEY]) refreshObservationFlag(); // 决策 3:开关联动即时生效
 });
 
 /**

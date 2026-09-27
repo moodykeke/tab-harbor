@@ -234,7 +234,10 @@
       sendMessage: function (msg, cb) {
         setTimeout(function () {
           let result = { ok: false, reason: 'mock' };
-          if (msg && msg.action === 'saveSettings' && typeof BGTStore !== 'undefined') {
+          if (msg && msg.action === 'clearObservation') {
+            localStorage.removeItem('bgtMockObsTrail'); // 预览层同口径:清除即空
+            result = { ok: true };
+          } else if (msg && msg.action === 'saveSettings' && typeof BGTStore !== 'undefined') {
             // 与生产同口径(决策 2):补丁合并到新鲜状态,白名单过滤,整包经 writeData 落分键
             const data = readData() || BGTStore.emptyData();
             const clean = {};

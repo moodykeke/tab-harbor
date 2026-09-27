@@ -345,6 +345,12 @@
       <textarea id="setTidyRules" class="input set__textarea" rows="4"
                 placeholder="github.com => 代码&#10;developer.mozilla.org => 学习"></textarea>
 
+      <p class="set__label">观测(可选,默认关闭)</p>
+      <label class="checkbox set__item"><input type="checkbox" id="setObservation"> 记录地址与标题,不记录内容、按键、滚动;缓冲只在本次浏览器会话,收工折叠进记录,关闭即无痕迹</label>
+      <div class="garden__row">
+        <button class="btn" id="btnClearObs" type="button">清除观测缓冲</button>
+      </div>
+
       <div id="gardenSection" hidden>
         <p class="set__label">本地文件夹 · 知识库入口(导出只写托管区段,永不触碰区段之外)</p>
         <div class="garden">
