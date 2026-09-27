@@ -452,7 +452,52 @@ export function openDupDialog() {
       }),
     ));
   }
+
+  // WP-5.2:共现图 —— 工作现场里一起出现的来源(同会话共现 + 路径相邻),
+  // 节点按 (url, 版本) 分;只能由观测层生成,PKM 算不出来
+  const g = BGTStore.coOccurrence(state.data);
+  if (g.edges.length) {
+    const titleOf = new Map(g.nodes.map((n) => [n.key, n]));
+    const coWrap = h('div', { class: 'co-wrap' });
+    coWrap.appendChild(h('p', { class: 'tl-section__label', text: tr('共现:工作现场里一起出现的来源') }));
+    for (const e of g.edges.slice(0, 8)) {
+      const na = titleOf.get(e.a) || { title: e.a, url: e.a };
+      const nb = titleOf.get(e.b) || { title: e.b, url: e.b };
+      coWrap.appendChild(h('div', { class: 'co-row' },
+        h('span', { class: 'co-names', text: na.title + '  ↔  ' + nb.title, title: e.a + '
+' + e.b }),
+        h('span', { class: 'sim-score', text: '×' + e.w.toFixed(2).replace(/\.?0+$/, '') }),
+      ));
+    }
+    const expBtn = h('button', { class: 'btn', type: 'button', text: tr('导出共现图(Markdown)') });
+    expBtn.addEventListener('click', exportCoOccurrence);
+    coWrap.appendChild(expBtn);
+    listEl.appendChild(coWrap);
+  }
   $('#dupDialog').showModal();
+}
+
+/** WP-5.2:把完整共现图(节点/边/权重)导出到知识库文件夹 */
+async function exportCoOccurrence() {
+  if (!window.BGTGarden) { toast(tr('此环境不支持文件导出'), true); return; }
+  let dir = null;
+  try { dir = await BGTGarden.loadGardenHandle(); } catch (e) { dir = null; }
+  if (!dir || !(await BGTGarden.ensurePermission(dir))) { toast(tr('请先在设置中选择本地文件夹'), true); return; }
+  const g = BGTStore.coOccurrence(state.data, { maxNodes: 200, maxEdges: 400 });
+  const titleOf = new Map(g.nodes.map((n) => [n.key, n]));
+  const lines = ['# ' + tr('共现图'), '', '## ' + tr('节点({n} 个)', { n: g.nodes.length })];
+  for (const n of g.nodes) lines.push('- [' + (n.title || n.key) + '](' + n.url + ')');
+  lines.push('', '## ' + tr('边({n} 条,按权重降序)', { n: g.edges.length }));
+  for (const e of g.edges) {
+    const a = titleOf.get(e.a) || { title: e.a };
+    const b = titleOf.get(e.b) || { title: e.b };
+    lines.push('- ' + (a.title || e.a) + ' ↔ ' + (b.title || e.b) + ' — ' + e.w.toFixed(2));
+  }
+  const name = 'co-occurrence-' + BGTGarden.dayKeyOf(Date.now()) + '.md';
+  await BGTGarden.writeFile(dir, name, lines.join('
+') + '
+', true);
+  toast(tr('共现图已导出({e} 条边)→ {name}', { e: g.edges.length, name }));
 }
 
 /** 把某一天的记录标签并集找回为一个分组(可撤销) */

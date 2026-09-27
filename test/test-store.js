@@ -1001,6 +1001,52 @@ test('4.2 事实切分:标题全同但正文指纹不同 ⇒ versioned(§7.1 唯
   assert.strictEqual(BGTStore.classifyStability(entry2).verdict, 'stable');
 });
 
+/* ---- WP-5.2:共现图 ---- */
+
+test('5.2 共现图:同会话共现成边、相邻收工衰减加权、同 url 不同版本不互连', () => {
+  const data = BGTStore.emptyData();
+  const mk = (i, at, urls) => BGTStore.makeRecord({
+    id: 'r' + i, title: '记' + i, createdAt: at,
+    tabs: urls.map((u) => ({ url: u, title: 'T' + u, savedAt: at })),
+  });
+  data.records = [
+    mk(1, 100, ['https://a.com/1', 'https://x.com/']),
+    mk(2, 200, ['https://a.com/1', 'https://y.com/']),
+    mk(3, 300, ['https://a.com/1', 'https://x.com/']), // a 与 x 共现两次
+  ];
+  const g = BGTStore.coOccurrence(data);
+  const e = (ka, kb) => g.edges.find((x) => (x.a === ka && x.b === kb) || (x.a === kb && x.b === ka));
+  assert.ok(e('https://a.com/1', 'https://x.com/'), 'a–x 同会话共现两次应成边');
+  assert.ok(e('https://a.com/1', 'https://x.com/').w > 2, '共现 2 次为主 + 路径相邻衰减叠加(实测 ' + e('https://a.com/1', 'https://x.com/').w + ')');
+  assert.ok(e('https://a.com/1', 'https://y.com/'), 'a–y 共现一次成边');
+  // 相邻衰减:rec1(rec2) 的 x–y 无同会话,只有跨会话 +0.25 ×2(x@r1↔y@r2, x@r3 无后继) → 0.25
+  const xy = e('https://x.com/', 'https://y.com/');
+  assert.ok(xy && xy.w < 1, '路径相邻以衰减权重成边(' + (xy && xy.w) + '),不成主边');
+});
+
+test('5.2 共现图(核心纪律):按 (url, version) 分节点 —— v1 与 v2 连向不同邻居', () => {
+  const data = BGTStore.emptyData();
+  const mk = (i, at, url, title) => BGTStore.makeRecord({
+    id: 'r' + i, title: '记' + i, createdAt: at,
+    tabs: [{ url, title, savedAt: at }],
+  });
+  // rec1: a(v1) + 旧设计稿;rec2: a(v2) + 迁移指南 —— 标题版本把 a 分成两个节点
+  data.records = [
+    (function () { const r = mk(1, 100, 'https://x.com/', 'X'); r.tabs.push({ url: 'https://a.com/doc', title: '设计稿 v1', savedAt: 100 }); return r; })(),
+    (function () { const r = mk(2, 200, 'https://y.com/', 'Y'); r.tabs.push({ url: 'https://a.com/doc', title: '设计稿 v2', savedAt: 200 }); return r; })(),
+  ];
+  const g = BGTStore.coOccurrence(data);
+  const v1 = g.nodes.find((n) => n.key.includes('a.com/doc') && n.key.endsWith('@v1'));
+  const v2 = g.nodes.find((n) => n.key.includes('a.com/doc') && n.key.endsWith('@v2'));
+  assert.ok(v1 && v2, 'a.com/doc 应按版本分为两个节点');
+  const ev1x = g.edges.find((e2) => (e2.a === v1.key && e2.b.includes('x.com')) || (e2.b === v1.key && e2.a.includes('x.com')));
+  const ev2y = g.edges.find((e2) => (e2.a === v2.key && e2.b.includes('y.com')) || (e2.b === v2.key && e2.a.includes('y.com')));
+  assert.ok(ev1x, 'v1 连向 x(旧设计稿邻居)');
+  assert.ok(ev2y, 'v2 连向 y(迁移指南邻居)');
+  const cross = g.edges.find((e2) => (e2.a === v1.key && e2.b === v2.key) || (e2.b === v1.key && e2.a === v2.key));
+  assert.ok(!cross, '同 url 的两个版本不互连 —— 版本切分改变图的结构,而非制造自环');
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

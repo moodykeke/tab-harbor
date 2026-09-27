@@ -1085,6 +1085,87 @@
     return out;
   }
 
+  /* ---------------- WP-5.2:共现图(只能由观测层生成,PKM 算不出来) ----------------
+   * 边的来源:同一 Record 内的来源对(同会话共现,+1)+ 相邻两次收工的跨会话对
+   * (路径相邻,+0.25 衰减)。节点必须按 (url, version) 分:若 a.com 从 v1 变 v2,
+   * 它应连到不同邻居(版本判定沿用 sourceVersions 的折叠纪律与挂版口径)。 */
+  function coOccurrence(data, opts) {
+    const o = opts || {};
+    const maxNodes = o.maxNodes || 40;
+    const maxEdges = o.maxEdges || 80;
+    const idx = buildUrlIdentity(data);
+
+    // 每个 url 的版本表:at → 节点后缀(单版本不加后缀)
+    const suffixOf = new Map(); // urlKey -> (at) => '@vN' | ''
+    const nodeTitle = new Map();
+    const nodeUrl = new Map();
+    for (const entry of idx.values()) {
+      const vs = sourceVersions(entry);
+      const multi = vs.length > 1 ? vs : null;
+      if (multi) {
+        for (let i = 0; i < multi.length; i += 1) {
+          nodeTitle.set(entry.key + '@v' + (i + 1), multi[i].title || entry.title || entry.key);
+          nodeUrl.set(entry.key + '@v' + (i + 1), entry.key);
+        }
+        suffixOf.set(entry.key, (function (versions) {
+          return function (at) {
+            let vi = 1;
+            for (let i = 0; i < versions.length; i += 1) if (versions[i].firstAt <= at) vi = i + 1;
+            return '@v' + vi;
+          };
+        })(multi));
+      } else {
+        nodeTitle.set(entry.key, entry.title || entry.key);
+        nodeUrl.set(entry.key, entry.key);
+      }
+    }
+
+    const nodeKeysOf = (rec) => {
+      const out = [];
+      const seen = new Set();
+      for (const t of (rec.tabs || [])) {
+        const entry = idx.get(normalizeUrl(t.url).key);
+        if (!entry) continue;
+        const sf = suffixOf.get(entry.key);
+        const nodeKey = entry.key + (sf ? sf(rec.createdAt) : '');
+        if (!seen.has(nodeKey)) { seen.add(nodeKey); out.push({ base: entry.key, node: nodeKey }); }
+      }
+      return out;
+    };
+
+    const edges = new Map(); // 'a|b' -> w
+    const degree = new Map();
+    const addEdge = (a, b, w) => {
+      if (a.base === b.base) return; // 同一 url 的不同版本不互连(它们本就该连向不同邻居)
+      const id = a.node < b.node ? a.node + '|' + b.node : b.node + '|' + a.node;
+      edges.set(id, (edges.get(id) || 0) + w);
+    };
+    const recs = (data.records || []).slice().sort((x, y) => x.createdAt - y.createdAt);
+    const cached = recs.map(nodeKeysOf);
+    for (const nk of cached) for (const n of nk) degree.set(n.node, (degree.get(n.node) || 0) + 1);
+    for (let r = 0; r < recs.length; r += 1) {
+      const cur = cached[r];
+      for (let i = 0; i < cur.length; i += 1) {
+        for (let j = i + 1; j < cur.length; j += 1) addEdge(cur[i], cur[j], 1); // 同会话共现
+      }
+      if (r + 1 < recs.length) {
+        for (const a of cur) for (const b of cached[r + 1]) addEdge(a, b, 0.25); // 路径相邻(衰减)
+      }
+    }
+
+    const nodesRanked = Array.from(degree.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxNodes).map((x) => x[0]);
+    const keep = new Set(nodesRanked);
+    const edgeList = Array.from(edges.entries())
+      .map(function (e) { const ab = e[0].split('|'); return { a: ab[0], b: ab[1], w: e[1] }; })
+      .filter(function (e) { return keep.has(e.a) && keep.has(e.b); })
+      .sort(function (a, b) { return b.w - a.w; })
+      .slice(0, maxEdges);
+    return {
+      nodes: nodesRanked.map(function (k) { return { key: k, url: nodeUrl.get(k) || k, title: nodeTitle.get(k) || k }; }),
+      edges: edgeList,
+    };
+  }
+
   /* ---------------- 相似分组洞察 ---------------- */
 
   /**
@@ -1565,6 +1646,7 @@
     searchAll: searchAll,
     encodeRecords: encodeRecords,
     changeReport: changeReport,
+    coOccurrence: coOccurrence,
     expandRecords: expandRecords,
     classifyStability: classifyStability,
     sourceVersions: sourceVersions,
