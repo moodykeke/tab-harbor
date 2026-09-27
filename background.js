@@ -911,6 +911,30 @@ async function handleMessage(msg) {
         // 决策 3:一键清除观测缓冲(只住会话,浏览器关闭亦即消失)
         await chrome.storage.session.remove(OBS_KEY);
         return { ok: true };
+      case 'exportTrail': {
+        // WP-4.3:阅读路径导出 —— 会话内的激活顺序即研究路径,只写托管区段
+        const res2 = await chrome.storage.session.get(OBS_KEY);
+        const trail = (res2 && res2[OBS_KEY]) || [];
+        if (!trail.length) return { ok: false, reason: 'empty' };
+        let dir = null;
+        try { dir = await BGTGarden.loadGardenHandle(); } catch (e2) { dir = null; } // 无句柄(含无 IndexedDB)统一 no-garden
+        if (!dir || !(await BGTGarden.ensurePermission(dir))) return { ok: false, reason: 'no-garden' };
+        const lines = [];
+        for (let i = 0; i < trail.length; i += 1) {
+          const e = trail[i];
+          const gap = i > 0 ? Math.round((e.at - trail[i - 1].at) / 60000) : 0;
+          const time = new Date(e.at).toTimeString().slice(0, 5);
+          lines.push('- ' + time + ' [' + (e.title || e.url) + '](' + e.url + ')'
+            + (i > 0 && gap > 0 ? ' — ' + gap + ' min 后' : ''));
+        }
+        const body = '## 阅读路径(' + trail.length + ' 步)\n' + lines.join('\n') + '\n';
+        const name = 'reading-path-' + BGTGarden.dayKeyOf(Date.now()) + '.md';
+        let existing = '';
+        try { existing = await BGTGarden.readTextFile(dir, name); } catch (e2) { /* 首次 */ }
+        const r2 = BGTGarden.applyManagedSection(existing, body);
+        await BGTGarden.writeFile(dir, name, r2.content, true);
+        return { ok: true, path: name, steps: trail.length };
+      }
       case 'cloudTest':
         return await cloudTest(await (await BGTStore.load()).settings);
       case 'cloudBackupNow': {

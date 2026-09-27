@@ -13,6 +13,7 @@ const assert = require('assert');
 const path = require('path');
 const { createEnv } = require('./helpers/sw-env');
 const BGTStore = require('../shared/store.js').BGTStore;
+const { BGTGarden } = require('../shared/garden.js');
 
 let passed = 0;
 let failed = 0;
@@ -370,6 +371,40 @@ test('WP-4.1 默认关:激活/聚焦事件零缓冲写、收工记录零 obs(隐
   const r = await env.send({ action: 'saveWorkspace', title: '项目A', closeTabs: false });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(env.data().records[0].obs, undefined, '未开启时记录不带 obs(零痕迹)');
+});
+
+test('WP-4.3 阅读路径导出:轨迹顺序落 garden 托管区段;空轨迹/无 garden 干净返回', async () => {
+  const activeTab = Object.assign(T(11, 'https://a.com/x'), { active: true });
+  const env = createEnv({ windows: [W1([activeTab])], storage: { bgtData: EMPTY() }, gardenHandle: true });
+  await env.send({ action: 'saveSettings', patch: { observation: true } });
+  await env.settle(20);
+  await env.fire('tabs.onActivated', { tabId: 11, windowId: 1 });
+  await env.settle(30);
+  await env.fire('windows.onFocusChanged', 1);
+  await env.settle(30);
+  const r = await env.send({ action: 'exportTrail' });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.steps, 2, '两步轨迹');
+  assert.ok(r.path.startsWith('reading-path-') && r.path.endsWith('.md'));
+  const files = Array.from(env.gardenSink.files.keys());
+  const target = files.filter((f2) => f2.startsWith('reading-path-') && !f2.endsWith('.bak.md'));
+  assert.strictEqual(target.length, 1, '写出一个目标文件(留底 .bak.md 属预期)');
+  const text = Buffer.from(env.gardenSink.files.get(target[0])).toString('utf8');
+  assert.ok(text.includes(BGTGarden.SECTION_BEGIN) && text.includes(BGTGarden.SECTION_END), '托管区段标记');
+  assert.ok(text.includes('[https://a.com/x](https://a.com/x)'), '链接行(顺序即路径)');
+  // 空轨迹
+  const env2 = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() }, gardenHandle: true });
+  const r2 = await env2.send({ action: 'exportTrail' });
+  assert.strictEqual(r2.ok, false);
+  assert.strictEqual(r2.reason, 'empty');
+  // 无 garden
+  const env3 = createEnv({ windows: [W1([activeTab])], storage: { bgtData: EMPTY() } });
+  await env3.send({ action: 'saveSettings', patch: { observation: true } });
+  await env3.fire('tabs.onActivated', { tabId: 11, windowId: 1 });
+  await env3.settle(40);
+  const r3 = await env3.send({ action: 'exportTrail' });
+  assert.strictEqual(r3.ok, false);
+  assert.strictEqual(r3.reason, 'no-garden');
 });
 
 test('WP-4.1 opt-in:轨迹折叠进记录(打开次数/停留),折叠即清空;一键清除路由', async () => {

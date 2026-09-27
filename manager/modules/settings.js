@@ -36,6 +36,17 @@ export function openSettings() {
       toast(res && res.ok ? tr('观测缓冲已清除') : tr('清除失败,后台服务不可用'), !!(res && res.ok));
     });
   }
+  const expBtn = $('#btnExportTrail');
+  if (expBtn && !expBtn.dataset.bound) {
+    expBtn.dataset.bound = '1';
+    expBtn.addEventListener('click', async () => {
+      const res = await send({ action: 'exportTrail' });
+      if (res && res.ok) toast(tr('阅读路径已导出({n} 步)→ {path}', { n: res.steps, path: res.path }));
+      else if (res && res.reason === 'empty') toast(tr('当前没有观测轨迹'), true);
+      else if (res && res.reason === 'no-garden') toast(tr('请先在上方选择本地文件夹'), true);
+      else toast(tr('导出失败,后台服务不可用'), true);
+    });
+  }
   cloudStatus('idle');
   renderStorageLine();
   renderSnapshots();

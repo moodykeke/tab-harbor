@@ -141,6 +141,7 @@ const SW_CONTRACT = [
   'saveWorkspace', 'restoreWorkspace', 'renameGroup', 'renameWorkspace',
   'saveSettings',
   'clearObservation',
+  'exportTrail',
   'cloudTest', 'cloudBackupNow', 'cloudRestore', 'restoreGroup',
 ];
 
