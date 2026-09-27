@@ -250,6 +250,28 @@ function renderTimeline() {
       }));
     }
     wrap.appendChild(strip);
+
+    // WP-5.3:变化摘要(结构化 delta,非生成式)—— 措辞只用看得到的事实
+    const ch = BGTStore.changeReport(state.data);
+    const chLines = [];
+    if (ch.changedSources.length) {
+      chLines.push(tr('内容标题变了:{n} 个来源(版本谱系)', { n: ch.changedSources.length }));
+    }
+    for (const pc of ch.projectChanges.slice(0, 3)) {
+      chLines.push(tr('「{name}」来源集 +{a}/−{r}', { name: pc.wsTitle || tr('未命名'), a: pc.added.length, r: pc.removed.length }));
+    }
+    if (ch.staleSources.length) {
+      chLines.push(tr('三周未回:{n} 个来源', { n: ch.staleSources.length }));
+    }
+    if (ch.newHubs.length) {
+      chLines.push(ch.newHubs.slice(0, 3).map((hb) => hb.host + '(' + hb.count + ')').join(' · '));
+    }
+    if (chLines.length) {
+      const chStrip = h('div', { class: 'tl-report tl-report--change' });
+      chStrip.appendChild(h('span', { class: 'tl-report__main', text: tr('变化摘要') }));
+      for (const line of chLines) chStrip.appendChild(h('span', { class: 'tl-report__day', text: line }));
+      wrap.appendChild(chStrip);
+    }
   }
 
   // 工作记录(不可变日志):按天分桶,逐条带与上一记录的差分

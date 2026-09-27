@@ -910,6 +910,84 @@
       reasons: (base.reasons || []).concat(['不同标题数(噪声折叠后 ' + folded.length + ')/ 观测数 ' + obsCount + ',标题乱跳,按动态页面对待']) });
   }
 
+  /* ---------------- WP-5.3:定时变化摘要(结构化 delta,非生成式) ----------------
+   * 回答"什么变了":内容变了的来源(版本谱系)/ 项目来源集变化(最近两次收工的差分)/
+   * 三周未回(曾经常来)/ 新枢纽页(窗口内新出现且高频的 host)。 */
+
+  function changeReport(data, now) {
+    now = now || Date.now();
+    const DAY = 86400000;
+    const winFrom = now - 7 * DAY;
+    const staleFrom = now - 21 * DAY;
+    const out = { changedSources: [], projectChanges: [], staleSources: [], newHubs: [] };
+
+    // 1) 内容变了的来源:窗口内出现了新版本的网址(版本谱系 ≥2 且最新版首现在窗口内)
+    for (const entry of buildUrlIdentity(data).values()) {
+      const vs = sourceVersions(entry);
+      if (vs.length < 2) continue;
+      const latest = vs[vs.length - 1];
+      if (latest.firstAt >= winFrom) {
+        out.changedSources.push({ key: entry.key, title: latest.title, versions: vs.length, lastAt: entry.lastSeenAt });
+      }
+    }
+    out.changedSources.sort((a, b) => b.lastAt - a.lastAt);
+
+    // 2) 项目来源集变化:每个工作区最近两条记录的标签集差分
+    const byWs = new Map();
+    for (const r of (data.records || [])) {
+      if (!r.workspaceId) continue;
+      if (!byWs.has(r.workspaceId)) byWs.set(r.workspaceId, []);
+      byWs.get(r.workspaceId).push(r);
+    }
+    for (const [wsId, list] of byWs) {
+      const sorted = list.slice().sort((a, b) => a.createdAt - b.createdAt);
+      const last = sorted[sorted.length - 1];
+      const prev = sorted[sorted.length - 2];
+      if (!last || !prev || last.createdAt < winFrom) continue;
+      const d = diffTabs(prev.tabs, last.tabs);
+      if (d.added.length || d.removed.length) {
+        const ws = (data.workspaces || []).find((w) => w.id === wsId);
+        out.projectChanges.push({
+          wsId, wsTitle: ws ? ws.title : '', at: last.createdAt,
+          added: d.added.map((t) => t.url), removed: d.removed.map((t) => t.url),
+        });
+      }
+    }
+
+    // 3) 三周未回:引用 ≥2 且最近出现早于 21 天前
+    for (const entry of buildUrlIdentity(data).values()) {
+      if (entry.referenceCount >= 2 && entry.lastSeenAt && entry.lastSeenAt < staleFrom) {
+        out.staleSources.push({ key: entry.key, title: entry.title, lastAt: entry.lastSeenAt, refCount: entry.referenceCount });
+      }
+    }
+    out.staleSources.sort((a, b) => a.lastAt - b.lastAt);
+    out.staleSources = out.staleSources.slice(0, 8);
+
+    // 4) 新枢纽页:窗口内**首次**出现且窗口内引用 ≥3 次的 host
+    const hostWin = new Map();
+    const hostEver = new Set();
+    for (const r of (data.records || [])) {
+      const hosts = new Set();
+      for (const t of (r.tabs || [])) hosts.add(normalizeUrl(t.url).host);
+      for (const h of hosts) {
+        hostEver.add(h);
+        if (r.createdAt >= winFrom && r.createdAt <= now) {
+          if (!hostWin.has(h)) hostWin.set(h, { host: h, firstAt: r.createdAt, count: 0 });
+          hostWin.get(h).count += 1;
+        }
+      }
+    }
+    for (const v of hostWin.values()) {
+      // "新" = 首次出现落在窗口内(此前的历史记录里从未见过该 host)
+      const seenBefore = (data.records || []).some((r) => r.createdAt < winFrom
+        && (r.tabs || []).some((t) => normalizeUrl(t.url).host === v.host));
+      if (!seenBefore && v.count >= 3) out.newHubs.push(v);
+    }
+    out.newHubs.sort((a, b) => b.count - a.count);
+
+    return out;
+  }
+
   /* ---------------- 相似分组洞察 ---------------- */
 
   /**
@@ -1382,6 +1460,7 @@
     lookupIndex: lookupIndex,
     searchAll: searchAll,
     encodeRecords: encodeRecords,
+    changeReport: changeReport,
     expandRecords: expandRecords,
     classifyStability: classifyStability,
     sourceVersions: sourceVersions,

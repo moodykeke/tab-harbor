@@ -939,6 +939,49 @@ test('5.1 落盘往返:persist(全量内存)→ 磁盘增量 → load 展开还�
   }
 });
 
+/* ---- WP-5.3:定时变化摘要(结构化 delta) ---- */
+
+test('5.3 变化摘要:内容变了的来源(窗口内出现新版本)/ 三周未回 / 新枢纽页', () => {
+  const now = Date.now();
+  const DAY = 86400000;
+  const data = BGTStore.emptyData();
+  const mk = (i, url, title, at, wsId) => BGTStore.makeRecord({
+    id: 'r' + i, title: '记' + i, createdAt: at, workspaceId: wsId,
+    tabs: [{ url, title, savedAt: at }],
+  });
+  // A:三周前与上周各一次、标题变版(v1→v2 落在窗口内)→ changedSources
+  data.records.push(mk(1, 'https://a.com/x', '设计稿 v1', now - 24 * DAY));
+  data.records.push(mk(2, 'https://a.com/x', '设计稿 v2', now - 2 * DAY));
+  // B:一个月前两次出现后消失 → staleSources
+  data.records.push(mk(3, 'https://b.com/old', '旧文', now - 30 * DAY));
+  data.records.push(mk(4, 'https://b.com/old', '旧文', now - 28 * DAY));
+  // C:窗口内新 host 出现 3 次、窗口前从未见过 → newHubs
+  for (let i = 0; i < 3; i += 1) data.records.push(mk(10 + i, 'https://newhub.com/p' + i, 'H' + i, now - (i + 1) * DAY));
+  const rep = BGTStore.changeReport(data, now);
+  assert.ok(rep.changedSources.some((c) => c.key.includes('a.com/x') && c.versions === 2), '标题变版且最新版在窗口内 → changedSources');
+  assert.ok(rep.staleSources.some((c) => c.key.includes('b.com/old') && c.refCount === 2), '三周未回 → staleSources');
+  assert.ok(rep.newHubs.some((h2) => h2.host === 'newhub.com' && h2.count === 3), '窗口内新高频 host → newHubs');
+});
+
+test('5.3 变化摘要:项目来源集变化 = 同一工作区最近两次收工的差分;旧记录不动', () => {
+  const now = Date.now();
+  const DAY = 86400000;
+  const data = BGTStore.emptyData();
+  data.workspaces = [BGTStore.normalizeWorkspace({ id: 'w1', title: '项目甲', tabs: [] })];
+  const mk = (i, urls, at) => BGTStore.makeRecord({
+    id: 'r' + i, title: '记' + i, createdAt: at, workspaceId: 'w1',
+    tabs: urls.map((u) => ({ url: u, title: 'T', savedAt: at })),
+  });
+  data.records.push(mk(1, ['https://a.com/1', 'https://a.com/2'], now - 10 * DAY));
+  data.records.push(mk(2, ['https://a.com/2', 'https://c.com/3'], now - 1 * DAY)); // +c −1
+  const rep = BGTStore.changeReport(data, now);
+  const pc = rep.projectChanges.find((x) => x.wsId === 'w1');
+  assert.ok(pc, '应有该项目的来源集变化');
+  assert.strictEqual(pc.wsTitle, '项目甲');
+  assert.deepStrictEqual(pc.added, ['https://c.com/3']);
+  assert.deepStrictEqual(pc.removed, ['https://a.com/1']);
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

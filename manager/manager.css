@@ -861,3 +861,6 @@
   overflow: hidden; text-overflow: ellipsis;
 }
 .today__empty { color: var(--text-2, #888); font-size: 13px; padding: 6px 0; }
+
+/* WP-5.3:变化摘要条 */
+.tl-report--change { margin-top: 6px; }
