@@ -809,6 +809,36 @@ test('3.3 sourceVersions:单版本(纯噪声差异)不产生假谱系', () => {
   assert.strictEqual(BGTStore.sourceVersions(entry).length, 1, '(N) 计数差异折叠为一版');
 });
 
+/* ---- WP-2.3:统一搜索(searchAll,纯函数) ---- */
+
+test('2.3 searchAll:跨 分组/项目/历史 三域匹配(按名与标签的标题/网址)', () => {
+  const data = BGTStore.emptyData();
+  data.groups = [BGTStore.normalizeGroup({ id: 'g1', title: '设计稿收藏', tabs: [{ url: 'https://a.com/1' }] })];
+  data.workspaces = [BGTStore.normalizeWorkspace({ id: 'w1', title: '项目甲', tabs: [{ url: 'https://b.com/x', title: '迁移指南' }] })];
+  data.records = [BGTStore.makeRecord({ id: 'r1', title: '历史里的记录', createdAt: 1, tabs: [] }),
+    BGTStore.makeRecord({ id: 'r2', title: '无关', createdAt: 2, tabs: [{ url: 'https://c.com/迁移' }] })];
+  const r = BGTStore.searchAll(data, '设计');
+  assert.strictEqual(r.groups.length, 1, '按分组名匹配');
+  const r2 = BGTStore.searchAll(data, '迁移');
+  assert.strictEqual(r2.workspaces.length, 1, '按工作区标签标题匹配');
+  assert.strictEqual(r2.records.length, 1, '按记录标签网址匹配');
+  const r3 = BGTStore.searchAll(data, '历史');
+  assert.strictEqual(r3.records.length, 1, '按记录名匹配');
+  assert.strictEqual(BGTStore.searchAll(data, '').records.length, 0, '空查询词返回空');
+});
+
+test('2.3 searchAll:每域上限与归档分组排除', () => {
+  const data = BGTStore.emptyData();
+  for (let i = 0; i < 12; i += 1) {
+    data.groups.push(BGTStore.normalizeGroup({ id: 'g' + i, title: '稿' + i, tabs: [] }));
+  }
+  data.groups[0].archived = true;
+  const r = BGTStore.searchAll(data, '稿');
+  assert.strictEqual(r.groups.length, 8, '默认每域上限 8');
+  assert.ok(!r.groups.some((g) => g.archived), '归档分组不参与统一搜索');
+  assert.strictEqual(BGTStore.searchAll(data, '稿', 3).groups.length, 3, '上限可配置');
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

@@ -820,6 +820,30 @@
     return versions;
   }
 
+  /** WP-2.3 统一搜索:跨 收藏分组 / 项目(工作区)/ 历史(记录) 的匹配(纯函数,渲染层消费)。
+   *  每类上限 limits(默认 8);归档分组不参与;历史按新到旧。 */
+  function searchAll(data, q, limits) {
+    const ql = String(q || '').trim().toLowerCase();
+    const out = { groups: [], workspaces: [], records: [] };
+    if (!ql) return out;
+    const lim = limits || 8;
+    const tabHit = (tabs) => (tabs || []).some((t) =>
+      (t.title || '').toLowerCase().includes(ql) || (t.url || '').toLowerCase().includes(ql));
+    for (const g of (data.groups || [])) {
+      if (out.groups.length >= lim) break;
+      if (!g.archived && ((g.title || '').toLowerCase().includes(ql) || tabHit(g.tabs))) out.groups.push(g);
+    }
+    for (const w of (data.workspaces || [])) {
+      if (out.workspaces.length >= lim) break;
+      if ((w.title || '').toLowerCase().includes(ql) || tabHit(w.tabs)) out.workspaces.push(w);
+    }
+    for (const r of (data.records || []).slice().reverse()) {
+      if (out.records.length >= lim) break;
+      if ((r.title || '').toLowerCase().includes(ql) || tabHit(r.tabs)) out.records.push(r);
+    }
+    return out;
+  }
+
   function classifyStability(entry) {
     const occ = (entry && Array.isArray(entry.occurrences)) ? entry.occurrences : [];
     const obsCount = occ.length;
@@ -1261,6 +1285,7 @@
     ruleTarget: ruleTarget,
     buildUrlIdentity: buildUrlIdentity,
     lookupIndex: lookupIndex,
+    searchAll: searchAll,
     classifyStability: classifyStability,
     sourceVersions: sourceVersions,
     noiseFoldTitle: noiseFoldTitle, // UI 侧把 occurrence 归入版本时使用(与索引/分类器同一折叠纪律)

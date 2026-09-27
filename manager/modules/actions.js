@@ -311,7 +311,7 @@ function copyExcerptText(excerptId) {
 }
 
 /** 从来源链跳到工作区卡片 */
-function locateWorkspace(wsId) {
+export function locateWorkspace(wsId) {
   state.view = 'workspaces';
   render();
   state.wsOpen.add(wsId);

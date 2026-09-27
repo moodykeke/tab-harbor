@@ -7,7 +7,7 @@ import { toast, openMenu } from './ui.js';
 import { render, renderGroups, renderWorkspaces, renderToday, applySearchLight, structureToken, updateBatchBar, showKbdFocus } from './render.js';
 import {
   restoreGroup, deleteGroup, removeTab, addCurrentTabToGroup, newGroup, doSave,
-  openDupMenu, openDupDialog, openRestoreMenu, openGroupMenu, jumpToGroup,
+  openDupMenu, openDupDialog, openRestoreMenu, openGroupMenu, jumpToGroup, locateWorkspace,
   importNativeGroups, tidyByDomain, handleImport, doExport,
   batchMerge, batchDelete, batchExport,
   confirmRestoreDialog, wsRestore, openWsMenu, deleteWorkspace,
@@ -274,6 +274,17 @@ export function bindEvents() {
   $('#todayList').addEventListener('click', (e) => {
     const recEl = e.target.closest('[data-rec]');
     if (recEl) { openRecordDialogById(recEl.dataset.rec); return; }
+    const uEl = e.target.closest('[data-act="u-group"], [data-act="u-ws"]');
+    if (uEl) {
+      if (uEl.dataset.act === 'u-group') {
+        state.view = 'groups';
+        render();
+        jumpToGroup(uEl.dataset.id);
+      } else {
+        locateWorkspace(uEl.dataset.id);
+      }
+      return;
+    }
     const actEl = e.target.closest('[data-act]');
     const card = e.target.closest('.today__ws');
     if (!card || !actEl) return;

@@ -82,6 +82,12 @@ export function renderToday() {
   $('#mainTitle').textContent = tr('今天');
   $('#mainSub').textContent = tr('继续昨天的工作 —— 上次收工的项目、今天的记录与摘录');
 
+  // WP-2.3 统一搜索:有查询词时,今天首页给出跨 收藏分组/项目/历史 的统一结果
+  if (q) {
+    renderUnifiedResults(wrap, q);
+    return;
+  }
+
   // 1) 继续工作:最近收工的项目(最多 6 个,收工时间倒序)
   const matchWs = (w) => !q
     || (w.title || '').toLowerCase().includes(q)
@@ -133,6 +139,37 @@ export function renderToday() {
       }
     }
   }
+}
+
+/** WP-2.3:统一搜索结果(收藏分组 / 项目 / 历史),点击行为:分组→跳转、项目→定位、历史→当时现场 */
+function renderUnifiedResults(wrap, q) {
+  const r = BGTStore.searchAll(state.data, q);
+  const total = r.groups.length + r.workspaces.length + r.records.length;
+  $('#mainSub').textContent = tr('「{q}」的搜索结果:{n} 条(分组 / 项目 / 历史)', { q, n: total });
+  if (!total) {
+    wrap.appendChild(h('p', { class: 'today__empty', text: tr('无匹配结果') }));
+    return;
+  }
+  const section = (label, items, row) => {
+    if (!items.length) return;
+    wrap.appendChild(h('p', { class: 'tl-section__label', text: label + '(' + items.length + ')' }));
+    for (const it of items) wrap.appendChild(row(it));
+  };
+  section(tr('分组'), r.groups, (g) => h('button', {
+    class: 'today__rec', type: 'button', 'data-act': 'u-group', 'data-id': g.id,
+    text: (g.title || tr('未命名分组')) + '(' + g.tabs.length + ')',
+    title: tr('点击跳转到该分组'),
+  }));
+  section(tr('项目'), r.workspaces, (w) => h('button', {
+    class: 'today__rec', type: 'button', 'data-act': 'u-ws', 'data-id': w.id,
+    text: (w.title || tr('未命名工作区')) + '(' + w.tabs.length + ' · ' + relTime(w.createdAt) + ')',
+    title: tr('点击定位到该工作区'),
+  }));
+  section(tr('历史'), r.records, (rec) => h('button', {
+    class: 'today__rec', type: 'button', 'data-rec': rec.id,
+    text: fmtDate(rec.createdAt) + ' ' + (rec.title || tr('记录')) + '(' + (rec.tabs || []).length + ')',
+    title: tr('点击查看当时现场'),
+  }));
 }
 
 function buildTodayWsCard(w) {
