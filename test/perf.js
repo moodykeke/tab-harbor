@@ -181,9 +181,9 @@ test('序列化体积:大库 JSON < 6MB(300 记录上限下)且 storage 配额�
   assert(mb < 6, '实际 ' + mb.toFixed(2) + 'MB');
 });
 
-test('normalizeRecord 上限裁剪:records 恒 ≤ 300', () => {
-  const d = BGTStore.normalizeData({ records: Array.from({ length: 500 }, (_, i) => ({ id: 'x' + i, title: 't', tabs: [] })) });
-  assert.strictEqual(d.records.length, 300);
+test('normalizeRecord 上限裁剪:records 恒 ≤ RECORDS_MAX(v3.19.0 起为 1000,ADR-002)', () => {
+  const d = BGTStore.normalizeData({ records: Array.from({ length: BGTStore.RECORDS_MAX + 200 }, (_, i) => ({ id: 'x' + i, title: 't', tabs: [] })) });
+  assert.strictEqual(d.records.length, BGTStore.RECORDS_MAX);
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

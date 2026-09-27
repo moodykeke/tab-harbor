@@ -123,7 +123,8 @@
 
   /* ---------------- Record:不可变工作日志 ---------------- */
 
-  const RECORDS_MAX = 300; // 日志容量上限(时间越久越珍贵,但控制存储体积)
+  const RECORDS_MAX = 1000; // 日志容量上限。v3.19.0(ADR-002)起落盘为增量编码,单条 ~0.3-1KB:
+                              // 1000 条 ≈ 16 个月@每天 2 次收工 —— 解决"300 条 ≈ 5 个月,花园要长青"的硬冲突
 
   function hashTabs(tabs, workspaceId) {
     // contextHash = 工作区身份 + 归一化 URL 顺序 + 置顶状态(窗口边界 v4.0 再纳入)
@@ -139,6 +140,24 @@
 
   function normalizeRecord(raw) {
     const r = raw && typeof raw === 'object' ? raw : {};
+    if (r.delta && !r.tabs) {
+      // ADR-002 增量形态:仅在未先经 expandRecords 的路径出现,轻校验透传
+      const d = r.delta && typeof r.delta === 'object' ? r.delta : {};
+      return {
+        id: typeof r.id === 'string' && r.id ? r.id : genId('r'),
+        createdAt: Number(r.createdAt) || Date.now(),
+        title: typeof r.title === 'string' ? r.title : '',
+        hash: typeof r.hash === 'string' ? r.hash : '',
+        workspaceId: (r.workspaceId && typeof r.workspaceId === 'string') ? r.workspaceId : undefined,
+        source: (r.source && typeof r.source === 'string') ? r.source : 'clockout',
+        delta: {
+          baseId: (d.baseId && typeof d.baseId === 'string') ? d.baseId : '',
+          added: Array.isArray(d.added) ? d.added : [],
+          removed: Array.isArray(d.removed) ? d.removed : [],
+          order: Array.isArray(d.order) ? d.order : [],
+        },
+      };
+    }
     const createdAt = Number(r.createdAt) || Date.now();
     const workspaceId = (r.workspaceId && typeof r.workspaceId === 'string') ? r.workspaceId : undefined;
     const tabs = (Array.isArray(r.tabs) ? r.tabs : []).map(function (t) {
@@ -232,7 +251,7 @@
       return normalizeData({
         groups: res[GROUPS_KEY],
         workspaces: res[WORKSPACES_KEY],
-        records: res[RECORDS_KEY],
+        records: expandRecords(res[RECORDS_KEY]), // 磁盘为增量形态(ADR-002),读取即展开为全量
         excerpts: res[EXCERPTS_KEY],
         settings: meta.settings,
         updatedAt: meta.updatedAt,
@@ -316,7 +335,7 @@
     };
     if (all || collections.groups) out[GROUPS_KEY] = (data.groups || []).map(normalizeGroup);
     if (all || collections.workspaces) out[WORKSPACES_KEY] = (data.workspaces || []).map(normalizeWorkspace);
-    if (all || collections.records) out[RECORDS_KEY] = (data.records || []).map(normalizeRecord).slice(-RECORDS_MAX);
+    if (all || collections.records) out[RECORDS_KEY] = encodeRecords(data.records); // ADR-002:增量编码 + 窗口
     if (all || collections.excerpts) out[EXCERPTS_KEY] = (data.excerpts || []).map(normalizeExcerpt).slice(-EXCERPTS_MAX);
     return out;
   }
@@ -1056,6 +1075,82 @@
     return { added, removed, kept: nextKeys.size - added.length };
   }
 
+  /* ---------------- Wave 5.1:Delta 历史存储(ADR-002) ----------------
+   * 内存全量、磁盘增量:消费方(时间轴/身份索引/周报/统一搜索/证据段)永远拿到全量记录;
+   * 落盘时窗口内首条存全量、后续存与上一条的差分(added/removed,复用 diffTabs 的身份键口径),
+   * 并保留 order(身份键序列)—— 标签顺序是"现场"的一部分,重建不得重排。
+   * 记录自描述(有 tabs=全量,有 delta=增量),旧数据零迁移;编码时的窗口截断
+   * 自动把留存首条物化为全量 —— 链不可能断。 */
+
+  /** 全量记录链 → 存储形态(首全量 + 增量),并应用滚动窗口(RECORDS_MAX) */
+  function encodeRecords(fullList) {
+    const kept = (fullList || []).slice(-RECORDS_MAX);
+    const out = [];
+    for (let i = 0; i < kept.length; i += 1) {
+      if (i === 0) { out.push(kept[i]); continue; }
+      const d = diffTabs(kept[i - 1].tabs, kept[i].tabs);
+      out.push({
+        id: kept[i].id, createdAt: kept[i].createdAt, title: kept[i].title,
+        hash: kept[i].hash, workspaceId: kept[i].workspaceId, source: kept[i].source,
+        delta: (function () {
+          const removedKeys = d.removed.map(function (t) { return normalizeUrl(t.url).key; });
+          const actual = (kept[i].tabs || []).map(function (t) { return normalizeUrl(t.url).key; });
+          // 默认重建序 = 基序(去掉 removed)+ added 依 next 序追加;与实际一致时省略 order
+          const def = [];
+          const seen = new Set();
+          for (const t of kept[i - 1].tabs) {
+            const k = normalizeUrl(t.url).key;
+            if (removedKeys.indexOf(k) < 0 && !seen.has(k)) { def.push(k); seen.add(k); }
+          }
+          for (const t of d.added) {
+            const k = normalizeUrl(t.url).key;
+            if (!seen.has(k)) { def.push(k); seen.add(k); }
+          }
+          const same = actual.length === def.length && actual.every(function (k, idx) { return k === def[idx]; });
+          const delta = { baseId: kept[i - 1].id, added: d.added, removed: removedKeys };
+          if (!same) delta.order = actual;
+          return delta;
+        })(),
+      });
+    }
+    return out;
+  }
+
+  /** 存储形态(可混合旧全量与新增量)→ 全量记录链;断链条目(基被裁/损坏)跳过其 delta 形态 */
+  function expandRecords(storedList) {
+    const out = [];
+    const byId = new Map();
+    for (const r of (storedList || [])) {
+      const rec = r && typeof r === 'object' ? r : {};
+      if (rec.delta && rec.delta.baseId) {
+        const base = byId.get(rec.delta.baseId);
+        if (base) {
+          const map = new Map();
+          for (const t of base.tabs) map.set(normalizeUrl(t.url).key, t);
+          for (const key of (rec.delta.removed || [])) map.delete(key);
+          for (const t of (rec.delta.added || [])) map.set(normalizeUrl(t.url).key, t);
+          const tabs = (rec.delta.order || []) // order 省略 ⇒ 用 map 序(基序减 removed 加 added),即编码时的默认重建序
+            .map(function (k) { return map.get(k); })
+            .filter(function (t) { return !!t; });
+          // order 之外新增(异常兜底)附到尾部,不丢数据
+          for (const t of map.values()) if (!tabs.includes(t)) tabs.push(t);
+          const full = {
+            id: rec.id, createdAt: rec.createdAt, title: rec.title, hash: rec.hash,
+            workspaceId: rec.workspaceId, source: rec.source, tabs: tabs,
+          };
+          byId.set(full.id, full);
+          out.push(full);
+          continue;
+        }
+      }
+      if (Array.isArray(rec.tabs)) { // 全量记录(或旧格式)
+        byId.set(rec.id, rec);
+        out.push(rec);
+      }
+    }
+    return out;
+  }
+
   /* ---------------- 港湾周报(纯本地节奏摘要) ---------------- */
 
   /**
@@ -1286,6 +1381,8 @@
     buildUrlIdentity: buildUrlIdentity,
     lookupIndex: lookupIndex,
     searchAll: searchAll,
+    encodeRecords: encodeRecords,
+    expandRecords: expandRecords,
     classifyStability: classifyStability,
     sourceVersions: sourceVersions,
     noiseFoldTitle: noiseFoldTitle, // UI 侧把 occurrence 归入版本时使用(与索引/分类器同一折叠纪律)

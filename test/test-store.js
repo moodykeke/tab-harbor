@@ -839,6 +839,106 @@ test('2.3 searchAll:每域上限与归档分组排除', () => {
   assert.strictEqual(BGTStore.searchAll(data, '稿', 3).groups.length, 3, '上限可配置');
 });
 
+/* ---- Wave 5.1:Delta 历史存储(ADR-002) ---- */
+
+/** 造一条全量记录:tabs 为 [url 序号] 列表,顺序即传入顺序 */
+function fullRec(i, urls) {
+  return BGTStore.makeRecord({
+    id: 'r' + i, title: '记' + i, createdAt: 1000 + i,
+    tabs: urls.map((u, j) => ({ url: 'https://s.com/' + u, title: 'T' + u, savedAt: 1000 + i })),
+  });
+}
+
+test('5.1 编解码往返:标签集合与**顺序**逐位保真(顺序是现场的一部分)', () => {
+  const fulls = [
+    fullRec(0, ['a', 'b', 'c']),
+    fullRec(1, ['c', 'a', 'd', 'b']),   // 重排 + 换一个
+    fullRec(2, ['d', 'e']),
+  ];
+  const back = BGTStore.expandRecords(BGTStore.encodeRecords(fulls));
+  assert.strictEqual(back.length, 3);
+  for (let i = 0; i < 3; i += 1) {
+    assert.deepStrictEqual(back[i].tabs.map((t) => t.url), fulls[i].tabs.map((t) => t.url),
+      '第 ' + i + ' 条记录的标签顺序必须保真');
+    assert.strictEqual(back[i].id, fulls[i].id);
+    assert.strictEqual(back[i].hash, fulls[i].hash);
+  }
+});
+
+test('5.1 滚动窗口:超出上限截断,留存首条自动物化为全量(链不可能断)', () => {
+  const fulls = [];
+  for (let i = 0; i < BGTStore.RECORDS_MAX + 5; i += 1) fulls.push(fullRec(i, ['u' + i, 'k']));
+  const enc = BGTStore.encodeRecords(fulls);
+  assert.strictEqual(enc.length, BGTStore.RECORDS_MAX, '窗口生效');
+  assert.ok(Array.isArray(enc[0].tabs), '留存首条必须是全量形态');
+  assert.ok(enc[1].delta && enc[1].delta.baseId === enc[0].id, '后续为基于首条的增量');
+  const back = BGTStore.expandRecords(enc);
+  assert.strictEqual(back.length, BGTStore.RECORDS_MAX);
+  assert.deepStrictEqual(back[0].tabs.map((t) => t.url), fulls[5].tabs.map((t) => t.url),
+    '被裁掉的是最旧的 5 条');
+});
+
+test('5.1 体积收益(本决策的为什么):30 条相似记录,增量编码 < 全量的 35%', () => {
+  const fulls = [];
+  for (let i = 0; i < 30; i += 1) {
+    const urls = [];
+    for (let j = 0; j < 20; j += 1) urls.push(j === i % 20 ? 'new' + i : 'base' + j); // 每次只换 1 个标签
+    fulls.push(fullRec(i, urls));
+  }
+  const encSize = Buffer.byteLength(JSON.stringify(BGTStore.encodeRecords(fulls)));
+  const fullSize = Buffer.byteLength(JSON.stringify(fulls));
+  assert.ok(encSize < fullSize * 0.45,
+    '带顺序保真的增量编码应显著小于全量(实测 ' + (encSize / 1024).toFixed(1) + 'KB vs ' + (fullSize / 1024).toFixed(1) + 'KB)');
+});
+
+test('5.1 追加型收工(顺序与默认重建一致):order 省略,增量 < 全量的 15%', () => {
+  const fulls = [];
+  let urls = [];
+  for (let i = 0; i < 30; i += 1) {
+    urls = urls.concat(['app' + i]); // 只追加、不重排 —— order 应被省略
+    fulls.push(fullRec(i, urls.slice()));
+  }
+  const enc = BGTStore.encodeRecords(fulls);
+  assert.ok(enc.slice(1).every((r) => !r.delta.order), '顺序一致时 order 应省略');
+  const encSize = Buffer.byteLength(JSON.stringify(enc));
+  const fullSize = Buffer.byteLength(JSON.stringify(fulls));
+  assert.ok(encSize < fullSize * 0.15,
+    '追加型增量应极小(实测 ' + (encSize / 1024).toFixed(1) + 'KB vs ' + (fullSize / 1024).toFixed(1) + 'KB)');
+  const back = BGTStore.expandRecords(enc);
+  for (let i = 0; i < fulls.length; i += 1) {
+    assert.deepStrictEqual(back[i].tabs.map((t) => t.url), fulls[i].tabs.map((t) => t.url), '追加型往返保真');
+  }
+});
+
+test('5.1 混合旧数据与断链兜底:旧全量与新增量共存;基丢失的增量不产出记录', () => {
+  const fulls = [fullRec(0, ['a', 'b']), fullRec(1, ['b', 'c']), fullRec(2, ['c', 'd'])];
+  const enc = BGTStore.encodeRecords(fulls);
+  const mixed = [fulls[0]].concat(enc.slice(1)); // 首条是旧全量,后两条是增量 —— 真实升级场景
+  const back = BGTStore.expandRecords(mixed);
+  assert.strictEqual(back.length, 3);
+  assert.deepStrictEqual(back[2].tabs.map((t) => t.url), fulls[2].tabs.map((t) => t.url));
+  const broken = enc.slice(1); // 基被裁掉
+  const back2 = BGTStore.expandRecords(broken);
+  assert.strictEqual(back2.length, 0, '断链条目不产出记录(宁缺毋错),不抛异常');
+});
+
+test('5.1 落盘往返:persist(全量内存)→ 磁盘增量 → load 展开还原', async () => {
+  const env = stubStorage({});
+  const data = BGTStore.emptyData();
+  data.records = [fullRec(0, ['a', 'b', 'c']), fullRec(1, ['b', 'c', 'd']), fullRec(2, ['c', 'd', 'e'])];
+  await BGTStore.persist(data);
+  // 磁盘上确实是增量形态(第 2、3 条无 tabs 有 delta)
+  const raw = env.mem.get('bgtRecords');
+  assert.ok(Array.isArray(raw[0].tabs), '首条全量');
+  assert.ok(raw[1].delta && !raw[1].tabs, '后续增量(磁盘形态)');
+  const back = await BGTStore.load();
+  assert.strictEqual(back.records.length, 3);
+  for (let i = 0; i < 3; i += 1) {
+    assert.deepStrictEqual(back.records[i].tabs.map((t) => t.url), data.records[i].tabs.map((t) => t.url),
+      '读取展开后第 ' + i + ' 条保真');
+  }
+});
+
 run().then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

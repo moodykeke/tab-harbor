@@ -166,7 +166,7 @@ better-group-tabs/
 │   └── helpers/sw-env.js  #   内存版 chrome.* 与消息投递
 ├── tools/
 │   ├── pack.js            # 可复现打包(零依赖 ZIP 写入器 + 白名单 + SHA-256)
-│   ├── test-all.js        # 发布门禁:8 套 137 项断言
+│   ├── test-all.js        # 发布门禁:8 套 143 项断言
 │   ├── check-globals.js   # 静态门禁:未声明标识符
 │   ├── make-screenshots.js # 生成商店截图(无头 Chrome + CDP)
 │   └── patches/           # 历史补丁脚本存档(只读,勿运行 —— 见该目录 README)
