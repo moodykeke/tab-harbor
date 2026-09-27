@@ -184,7 +184,7 @@
     }
     const fh = await dirHandle.getFileHandle(name, { create: true });
     const w = await fh.createWritable();
-    await w.write(content);
+    await w.write(content instanceof Uint8Array ? content : String(content));
     await w.close();
     return true;
   }

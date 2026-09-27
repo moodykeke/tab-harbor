@@ -59,6 +59,7 @@ chrome.storage.local —— v3 分键布局(ADR-001,docs/ADR-001-write-model.md)
 ├── bgtWorkspaces 工作区[](多窗口 windows[])
 ├── bgtRecords    工作日志[](≤1000,增量编码:首全量+差分链,ADR-002;读取即展开)
 ├── bgtExcerpts   摘录[](≤300,单条 ≤500 字;Wave 3.1 增量键)
+├── bgtPageSnapshots 快照清单[](≤200;MHTML 本体在磁盘,WP-5.4 增量键)
 ├── bgtSnapshots  崩溃恢复快照(≤3,内容指纹去重)
 ├── bgtBackups    每日全量备份(≤7,内容指纹去重)
 ├── bgtData_v2_backup(旧单键迁移留底)
@@ -150,12 +151,12 @@ v3.11.2 的教训是只有数据层测试时,57 项全绿与 5 个功能全死�
 | `test/perf.js` | 数据 | 10 项性能基准。判定用**相对基线**(`test/perf-baseline.json`,容差 3x)而非绝对毫秒 —— 绝对阈值在负载波动下必然假失败,而假失败的门禁会被绕过。基准间轮转测量、各取多轮最小值,消除前一个基准的 GC 对后一个的干扰;含"指纹未中强制重建"防掩盖项 |
 | `test/i18n.js` | 静态 | 5 项翻译完整性:EN 全覆盖 / `_locales` 对齐 / 静态文案扫描 / 占位符一致 / 白名单 |
 | `test/integration.js` | 数据 | 9 项真实链路:备份信任链 / 恢复事务 / 事件去重 / 智能去重端到端 |
-| `test/sw-routes.js` | **接线** | 39 项 SW 运行时:在 `vm` 中真实加载 `background.js` 与 `shared/*.js`(真实 importScripts 语义),驱动全部 13 条消息路由与全部事件监听器 |
+| `test/sw-routes.js` | **接线** | 41 项 SW 运行时:在 `vm` 中真实加载 `background.js` 与 `shared/*.js`(真实 importScripts 语义),驱动全部 13 条消息路由与全部事件监听器 |
 | `test/seams.js` | **接线** | 9 项静态契约:UI→SW 路由一致性 / mock↔生产路由镜像(差异只能来自显式豁免表)/ 三个页面的 DOM id 契约 / **首屏契约(D:today 默认视图)** |
 | `test/garden.js` | 数据 | 7 项知识库通道纯函数:文件名安全 / Markdown / 托管区段三定律 |
 | 预览 | 手工 | `node dev-server.js` → 浏览器打开页面(mock 注入,真实扩展环境自动跳过) |
 
-**一次跑全部门禁**:`node tools/test-all.js`(8 套 145 项,任一失败非零退出)。
+**一次跑全部门禁**:`node tools/test-all.js`(8 套 147 项,任一失败非零退出)。
 `node tools/pack.js` 会先跑门禁再出包,门禁不过直接中止。
 
 **已完成的变异验证**(测试本身是否有效):

@@ -320,6 +320,46 @@ test('2.1a 「新建一个」→ 允许重名;N>1 时列候选,updateId 指名�
   assert.strictEqual(env.data().workspaces.length, 2, '指名更新不新建');
 });
 
+test('WP-5.4 完整快照:手势内申请 pageCapture → MHTML 落盘 garden → store 只留清单', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() }, gardenHandle: true });
+  await env.fire('contextMenus.onClicked',
+    { menuItemId: 'bgt-snapshot', pageUrl: 'https://a.com/doc' },
+    { id: 4, windowId: 1, url: 'https://a.com/doc', title: '设计文档' });
+  await env.settle(80);
+  const perms = env.callsOf('permissions.request');
+  assert.strictEqual(perms.length, 1, '应恰好申请一次可选权限');
+  assert.deepStrictEqual(perms[0].args[0], { permissions: ['pageCapture'] });
+  assert.strictEqual(env.callsOf('pageCapture.saveAsMHTML').length, 1, '对该标签页抓取 MHTML');
+  const files = Array.from(env.gardenSink.files.keys());
+  assert.strictEqual(files.length, 1, '写出一个 .mhtml');
+  assert.ok(files[0].endsWith('.mhtml') && files[0].includes('设计文档'), '文件名来自页面标题');
+  const body = env.gardenSink.files.get(files[0]);
+  assert.ok(body && body.byteLength === 26, '二进制本体落盘(vm 跨 realm 不用 instanceof,按字节长度断言)');
+  const sets = env.callsOf('storage.local.set').map((c) => c.args[0]).filter((ks) => ks.includes('bgtPageSnapshots'));
+  assert.ok(sets.length >= 1);
+  assert.deepStrictEqual(sets[sets.length - 1].slice().sort(), ['bgtMeta', 'bgtPageSnapshots'], '只写清单键 + meta');
+  const d = env.data();
+  assert.strictEqual(d.pageSnapshots.length, 1);
+  const ps = d.pageSnapshots[0];
+  assert.strictEqual(ps.url, 'https://a.com/doc');
+  assert.strictEqual(ps.bytes, 26, 'bytes = MHTML 体积(桩体 26 字节)');
+  assert.ok(ps.hash.length === 64 && /^[0-9a-f]+$/.test(ps.hash), 'SHA-256 与备份层同口径');
+  assert.ok(ps.path.startsWith('snapshots/') && ps.path.endsWith('.mhtml'));
+  assert.ok(!('content' in ps) && !('mhtml' in ps), '清单绝不携带内容本体(MB 级内容不进 store)');
+});
+
+test('WP-5.4 未配置 garden:干净失败,零清单写、无假成功反馈', async () => {
+  const env = createEnv({ windows: [W1([])], storage: { bgtData: EMPTY() } });
+  await env.fire('contextMenus.onClicked',
+    { menuItemId: 'bgt-snapshot', pageUrl: 'https://a.com/doc' },
+    { id: 4, windowId: 1, url: 'https://a.com/doc', title: 'T' });
+  await env.settle(80);
+  assert.strictEqual(env.data().pageSnapshots.length, 0, '不得留下清单');
+  assert.strictEqual(env.callsOf('pageCapture.saveAsMHTML').length, 1, '抓取会发生(权限已授)');
+  const badge = env.callsOf('action.setBadgeText').pop();
+  assert.ok(!badge || badge.args[0].text !== '✓', '失败不得闪成功徽章');
+});
+
 test('2.1b 开工即绑定:绑定窗口里的摘录自动归属该项目(采集瞬间冻结)', async () => {
   const data = EMPTY();
   data.workspaces = [BGTStore.normalizeWorkspace({ id: 'w1', title: '项目A', tabs: [{ url: 'https://a.com/x' }] })];

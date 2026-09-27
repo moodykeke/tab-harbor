@@ -165,6 +165,7 @@
   '恢复失败(': 'Restore failed (',
   '保存云端配置失败': 'Failed to save cloud config',
   '把选中文字存为摘录': 'Save selection as excerpt',
+  '把此页面存为完整快照(MHTML)': 'Save this page as a full snapshot (MHTML)',
   '{date} · 摘录': '{date} · Excerpt',
   '{date} · 摘录 · {project}': '{date} · Excerpt · {project}',
   '该网址有 {n} 个版本:': 'This URL has {n} versions:',

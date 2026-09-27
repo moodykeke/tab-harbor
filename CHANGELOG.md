@@ -5,6 +5,28 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 
 ---
 
+## [3.21.0] — 完整快照 T2(WP-5.4,Wave 5 无阻塞项收官)
+
+> 主题:网页的**内容级**保存(区别于标题/摘录这两级代理)。T2 = 可选权限 `pageCapture`,
+> 首次使用时在**手势内**申请(复用 sidePanel 的手势纪律);MHTML 本体落盘到本地知识库
+> 文件夹(garden 通道),**store 只留清单** `{url,title,hash,bytes,path,at}` —— 恪守
+> "MB 级内容绝不进 chrome.storage.local"的架构边界(ADR-001)。
+
+### Added(用户可见)
+- 右键「把此页面存为完整快照(MHTML)」:首次使用时浏览器弹出 pageCapture 权限申请;
+  文件写入所选知识库文件夹的 `snapshots/` 子目录(需先在设置里选择文件夹);
+  清单含 SHA-256(与备份层同口径)与字节数,可校验
+- manifest 新增 `optional_permissions: ["pageCapture"]`(**可选**权限,未使用即零授权,
+  CWS 审核按需展示)
+
+### Added(数据层/测试)
+- `bgtPageSnapshots` 清单集合(≤200,~120B/条),严格走 ADR-001 附录 A 的五处纪律
+  (buildWrites/身份指纹/全量备份/恢复/备份去重指纹);SW 通过 importScripts 复用
+  garden.js(SW 内直接以 IndexedDB 取句柄);garden.writeFile 支持二进制
+- sw-env 新增 pageCapture/permissions 桩与 garden 句柄注入;+2 全链路断言
+  (权限恰好一次 → 落盘二进制 → store 只写清单键、清单无内容字段;无 garden 干净失败
+  无假成功),变异验证:清单写改回整包 → 红。门禁 145 → **147 项**
+
 ## [3.20.0] — 定时变化摘要(WP-5.3)
 
 > 主题:**什么变了** —— 不是体量报告(那是港湾周报),是结构化 delta。刻意不做生成式摘要。

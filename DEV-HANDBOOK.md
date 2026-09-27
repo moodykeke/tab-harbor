@@ -10,7 +10,7 @@
 ## 1. 十分钟上手
 
 ```bash
-# 全部门禁(8 套 145 项,任一失败非零退出)—— 提交前必跑
+# 全部门禁(8 套 147 项,任一失败非零退出)—— 提交前必跑
 node tools/test-all.js
 
 # 出包(先跑门禁,再出商店包 + 审核包,并打印 SHA-256)
@@ -68,7 +68,7 @@ node tools/make-screenshots.js
 
 以下全部是实测值,不是估计。改动后如果这些数字显著漂移,那本身就是要解释的事。
 
-### 门禁:8 套 145 项
+### 门禁:8 套 147 项
 
 | 套件 | 项数 | 覆盖层 |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ node tools/make-screenshots.js
 | `test/perf.js` | 10 | 性能(相对基线;含"指纹未中强制重建"防掩盖项) |
 | `test/i18n.js` | 5 | 翻译完整性 |
 | `test/integration.js` | 9 | 真实链路 |
-| `test/sw-routes.js` | 39 | **接线层:真实加载 `background.js`** |
+| `test/sw-routes.js` | 41 | **接线层:真实加载 `background.js`** |
 | `test/seams.js` | 9 | 静态契约:UI→SW / mock↔生产 / DOM id / **首屏(D)** |
 
 ### 性能基线(`test/perf-baseline.json`,容差 3×;2026-09-27 机器状态漂移后按规程重记)
@@ -196,7 +196,7 @@ node tools/make-screenshots.js
 
 > **进度(勾选式,随落地更新)**:Wave 1 全部 ✅(1.1/1.2/1.3/1.4)· Wave 3.1 ✅ · 3.2 ✅ · 决策 1/2/4 ✅ · 同名覆盖语义 ✅(2026-09-27)
 > ⏸ Wave 0.1/0.2 待人(真机验证/隐私政策 URL/发布者信息/促销图)—— 上架唯一硬阻塞。
-> WP-2.1a ✅(v3.13.0)· 2.1b ✅(v3.14.0)。**Wave 2 全部完成** · **5.1 ✅**(v3.19.0,ADR-002)· **5.3 ✅**(v3.20.0)。未动:5.4、5.2(另被 4.1 阻塞)、Wave 4(决策 3 ⏳)、Wave 0(待人)。
+> WP-2.1a ✅(v3.13.0)· 2.1b ✅(v3.14.0)。**Wave 2 全部完成** · **5.1/5.3/5.4 ✅**。仅剩:5.2(共现图,被 4.1 阻塞)、Wave 4(决策 3 ⏳,草案已备)、Wave 0(待人)。**全部无阻塞的开发项至此完成。**
 
 
 规模:S ≈ 半天内 / M ≈ 1–3 天 / L ≈ 一周级(单人,含测试与文档)。
@@ -261,7 +261,7 @@ node tools/make-screenshots.js
 | **5.1** ✅ | **Delta 历史存储** | 1.1 | L | `RECORDS_MAX=300` ≈ 5 个月,而"花园"要长青 —— 这是**硬冲突**,Delta 存储从优化变成前置 |
 | **5.2** | **共现图** | 5.1、4.1 | L | 用不可变 `Record` 序列推出"来源之间的边"(同会话共现 / 路径相邻加权)。**只能由浏览器观测层生成**,PKM 算不出来。**必须按 (url, version) 分节点**:若 a.com 从 v1 变 v2,它应连到不同邻居 |
 | **5.3** ✅ | 定时变化摘要 | 5.1、3.3 | M | 不是体量报告(那是 `weeklyReport`),是**变化**报告:内容变了的来源 / 项目来源集变化 / 三周未回 / 新枢纽页。**结构化 delta,不做生成式摘要** |
-| **5.4** | **完整快照(T2)** | 5.1、3.5 | L | `optional_permissions: ["pageCapture"]`,**首次使用时才申请**(复用 WebDAV 的 `ensureCloudPermission` 形状)。**绝不能进 `chrome.storage.local`**:1–5MB/页 × 全量 blob 重写 = 架构上不成立。落盘 + store 只留 `{hash, bytes, path}`,复用 `makeBackupManifest` / `verifyBackup` 的清单形状 |
+| **5.4** ✅ | **完整快照(T2)** | 5.1、3.5 | L | `optional_permissions: ["pageCapture"]`,**首次使用时才申请**(复用 WebDAV 的 `ensureCloudPermission` 形状)。**绝不能进 `chrome.storage.local`**:1–5MB/页 × 全量 blob 重写 = 架构上不成立。落盘 + store 只留 `{hash, bytes, path}`,复用 `makeBackupManifest` / `verifyBackup` 的清单形状 |
 
 ---
 
@@ -299,7 +299,7 @@ node tools/make-screenshots.js
 
 ### 一个 WP 算"做完"的条件
 
-1. `node tools/test-all.js` **8 套 145 项全绿**(项数只会增)
+1. `node tools/test-all.js` **8 套 147 项全绿**(项数只会增)
 2. 行为改动**带一个能证伪的断言**,并通过**变异验证**:把实现改回旧写法,断言必须变红
 3. 新增 SW 路由已登记进 `test/seams.js` 的 `SW_CONTRACT`
 4. 新增 `tr('…')` 键已在 `shared/i18n.js` 的 `EN` 表里(用**单引号**,`test/i18n.js` 是文本扫描不是解析);HTML 静态中文同理

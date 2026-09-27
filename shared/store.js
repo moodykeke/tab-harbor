@@ -18,6 +18,8 @@
   const EXCERPTS_KEY = 'bgtExcerpts';     // Wave 3.1 摘录集合(证据层,增量键:老布局无此键 ⇒ 空集,无需迁移)
   const EXCERPTS_MAX = 300;               // 滚动窗口:300 × ≤500 字符,最坏 <1MB,不触碰"MB 级内容"边界
   const EXCERPT_TEXT_MAX = 500;
+  const PAGE_SNAPS_KEY = 'bgtPageSnapshots'; // WP-5.4:完整快照清单(MHTML 本体在磁盘)
+  const PAGE_SNAPS_MAX = 200;
   const LEGACY_BACKUP_KEY = 'bgtData_v2_backup';
   const STORAGE_SCHEMA = 3;               // 存储布局版本(数据形状仍是 DATA_VERSION)
   const SNAPSHOT_KEY = 'bgtSnapshots';
@@ -73,6 +75,7 @@
       workspaces: [],
       records: [],
       excerpts: [],
+      pageSnapshots: [],
       settings: Object.assign({}, DEFAULT_SETTINGS),
     };
   }
@@ -237,6 +240,7 @@
       workspaces: Array.isArray(d.workspaces) ? d.workspaces.map(normalizeWorkspace) : [],
       records: Array.isArray(d.records) ? d.records.map(normalizeRecord).slice(-RECORDS_MAX) : [],
       excerpts: Array.isArray(d.excerpts) ? d.excerpts.map(normalizeExcerpt).slice(-EXCERPTS_MAX) : [],
+      pageSnapshots: Array.isArray(d.pageSnapshots) ? d.pageSnapshots.map(normalizePageSnap).slice(-PAGE_SNAPS_MAX) : [],
       settings: normalizeSettings(d.settings),
     };
     if (d.updatedAt) out.updatedAt = d.updatedAt;
@@ -245,7 +249,7 @@
 
   /** 读取全部数据(合并视图);发现 v3 分键直接组装,v2 单键自动迁移,发现 v1 结构(tabGroups/options)时自动迁移 */
   async function load() {
-    const res = await chrome.storage.local.get([META_KEY, GROUPS_KEY, WORKSPACES_KEY, RECORDS_KEY, EXCERPTS_KEY, STORE_KEY, 'tabGroups', 'options']);
+    const res = await chrome.storage.local.get([META_KEY, GROUPS_KEY, WORKSPACES_KEY, RECORDS_KEY, EXCERPTS_KEY, PAGE_SNAPS_KEY, STORE_KEY, 'tabGroups', 'options']);
     const meta = res[META_KEY];
     if (meta && typeof meta === 'object') {
       return normalizeData({
@@ -253,6 +257,7 @@
         workspaces: res[WORKSPACES_KEY],
         records: expandRecords(res[RECORDS_KEY]), // 磁盘为增量形态(ADR-002),读取即展开为全量
         excerpts: res[EXCERPTS_KEY],
+        pageSnapshots: res[PAGE_SNAPS_KEY],
         settings: meta.settings,
         updatedAt: meta.updatedAt,
       });
@@ -337,12 +342,27 @@
     if (all || collections.workspaces) out[WORKSPACES_KEY] = (data.workspaces || []).map(normalizeWorkspace);
     if (all || collections.records) out[RECORDS_KEY] = encodeRecords(data.records); // ADR-002:增量编码 + 窗口
     if (all || collections.excerpts) out[EXCERPTS_KEY] = (data.excerpts || []).map(normalizeExcerpt).slice(-EXCERPTS_MAX);
+    if (all || collections.pageSnapshots) out[PAGE_SNAPS_KEY] = (data.pageSnapshots || []).map(normalizePageSnap).slice(-PAGE_SNAPS_MAX);
     return out;
   }
 
   /** 是否为本上下文刚写入的变更(用于跳过 storage.onChanged 自回声) */
   function isSelfWrite(updatedAt) {
     return !!updatedAt && updatedAt === lastWrittenAt;
+  }
+
+  /** 页面快照清单条目(WP-5.4):内容在磁盘,这里只有指针与校验信息 */
+  function normalizePageSnap(raw) {
+    const x = raw && typeof raw === 'object' ? raw : {};
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : genId('ps'),
+      url: (x.url || '').trim(),
+      title: typeof x.title === 'string' ? x.title : '',
+      hash: typeof x.hash === 'string' ? x.hash : '',
+      bytes: Number(x.bytes) || 0,
+      path: typeof x.path === 'string' ? x.path : '',
+      at: Number(x.at) || Date.now(),
+    };
   }
 
   /* ---------------- 快照(崩溃恢复) ---------------- */
@@ -502,6 +522,7 @@
       workspaces: data.workspaces || [],
       records: data.records || [],
       excerpts: data.excerpts || [],
+      pageSnapshots: data.pageSnapshots || [],
       settings,
     };
   }
@@ -521,7 +542,7 @@
 
   /** 当前全量状态指纹(本地备份去重与云端同步判定共用,不含运行态字段) */
   function stateFingerprint(payload) {
-    return JSON.stringify([payload.groups, payload.workspaces, payload.records, payload.excerpts, payload.settings]);
+    return JSON.stringify([payload.groups, payload.workspaces, payload.records, payload.excerpts, payload.pageSnapshots, payload.settings]);
   }
 
   async function loadBackups() {
@@ -683,6 +704,7 @@
     for (const w of data.workspaces || []) { fpField('W'); fpField(w.id); fpField(w.title); fpField(w.createdAt); fpField(w.lastEventId); fpTabs(w.tabs); }
     for (const r of data.records || []) { fpField('R'); fpField(r.id); fpField(r.title); fpField(r.createdAt); fpTabs(r.tabs); }
     for (const x of data.excerpts || []) { fpField('X'); fpField(x.id); fpField(x.url); fpField(x.text); fpField(x.tabTitle); fpField(x.savedAt); fpField(x.workspaceId); }
+    for (const ps of data.pageSnapshots || []) { fpField('P'); fpField(ps.id); fpField(ps.url); fpField(ps.hash); fpField(ps.path); fpField(ps.at); }
     return fp0 + ',' + fp1;
   }
 
@@ -765,6 +787,7 @@
       workspaces: (payload.workspaces || []).map((w) => normalizeWorkspace(w)),
       records: (payload.records || []).map((r) => normalizeRecord(r)).slice(-RECORDS_MAX),
       excerpts: (payload.excerpts || []).map((x) => normalizeExcerpt(x)).slice(-EXCERPTS_MAX),
+      pageSnapshots: (payload.pageSnapshots || []).map((x) => normalizePageSnap(x)).slice(-PAGE_SNAPS_MAX),
       settings,
     };
   }
@@ -1434,6 +1457,9 @@
     EXCERPTS_KEY: EXCERPTS_KEY,
     EXCERPTS_MAX: EXCERPTS_MAX,
     EXCERPT_TEXT_MAX: EXCERPT_TEXT_MAX,
+    PAGE_SNAPS_KEY: PAGE_SNAPS_KEY,
+    PAGE_SNAPS_MAX: PAGE_SNAPS_MAX,
+    normalizePageSnap: normalizePageSnap,
     LEGACY_BACKUP_KEY: LEGACY_BACKUP_KEY,
     STORAGE_SCHEMA: STORAGE_SCHEMA,
     SNAPSHOT_KEY: SNAPSHOT_KEY,

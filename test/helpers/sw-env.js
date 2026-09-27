@@ -104,6 +104,43 @@ function createEnv(opts) {
     return Promise.resolve();
   };
 
+  // WP-5.4:opts.gardenHandle 时构造假目录与最小 indexedDB 垫片(暂存,sandbox 建好后挂上)
+  let gardenShim = null;
+  if (opts.gardenHandle) {
+    const sink = { files: new Map() };
+    const fakeDir = {
+      name: 'test-garden',
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getDirectoryHandle: async () => fakeDir,
+      getFileHandle: async (name) => ({
+        getFile: async () => ({ text: async () => sink.files.get(name) || '' }),
+        createWritable: async () => ({ write: async (c) => sink.files.set(name, c), close: async () => {} }),
+      }),
+    };
+    gardenShim = {
+      sink,
+      indexedDB: {
+        open: () => {
+          const req = {};
+          setTimeout(() => {
+            const db = {
+              transaction: () => {
+                const tx = { objectStore: () => ({ get: () => ({ result: fakeDir }), put: () => ({}) }) };
+                setTimeout(() => { if (tx.oncomplete) tx.oncomplete(); }, 0); // garden 在同步段后才挂 oncomplete
+                return tx;
+              },
+              close: () => {},
+            };
+            req.result = db; // IDB 语义:回调触发时 req.result 已就绪
+            if (req.onsuccess) req.onsuccess({ target: { result: db } });
+          }, 0);
+          return req;
+        },
+      },
+    };
+  }
+
   /* ---------------- chrome.* ---------------- */
   const chrome = {
     runtime: {
@@ -144,6 +181,14 @@ function createEnv(opts) {
         getBytesInUse: () => Promise.resolve(JSON.stringify(Array.from(storage.entries())).length * 2),
       },
       onChanged: { addListener: (fn) => on('storage.onChanged', fn) },
+    },
+    pageCapture: {
+      saveAsMHTML: ({ tabId }, cb) => {
+        record('pageCapture.saveAsMHTML', [{ tabId }]);
+        const fake = new (require('buffer').Blob)(['FAKE-MHTML-BODY-0123456789']);
+        if (cb) cb(fake);
+        return Promise.resolve(fake);
+      },
     },
     tabs: {
       query: (q) => {
@@ -241,7 +286,7 @@ function createEnv(opts) {
       setBadgeBackgroundColor: (o) => record('action.setBadgeBackgroundColor', [o]),
     },
     permissions: {
-      request: () => Promise.resolve(true),
+      request: (perms) => { record('permissions.request', [perms]); return Promise.resolve(true); },
       contains: () => Promise.resolve(true),
       remove: () => Promise.resolve(),
     },
@@ -274,6 +319,7 @@ function createEnv(opts) {
     },
   };
   sandbox.self = sandbox;
+  if (gardenShim) sandbox.indexedDB = gardenShim.indexedDB; // garden.js 的 withStore 在 vm 里能命中
   vm.createContext(sandbox);
   sandbox.importScripts = (...names) => {
     for (const n of names) {
@@ -316,7 +362,8 @@ function createEnv(opts) {
     world,
     calls,
     storage,
-    send,
+    gardenSink: gardenShim ? gardenShim.sink : null,
+  send,
     fire,
     listenerCount,
     createdTabs,
@@ -332,6 +379,7 @@ function createEnv(opts) {
           workspaces: storage.get('bgtWorkspaces') || [],
           records: storage.get('bgtRecords') || [],
           excerpts: storage.get('bgtExcerpts') || [],
+          pageSnapshots: storage.get('bgtPageSnapshots') || [],
           settings: meta.settings || {},
           updatedAt: meta.updatedAt,
         });

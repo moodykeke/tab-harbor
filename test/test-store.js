@@ -553,7 +553,7 @@ function stubStorage(initial) {
 }
 
 const K = { meta: 'bgtMeta', groups: 'bgtGroups', ws: 'bgtWorkspaces', rec: 'bgtRecords', exc: 'bgtExcerpts' };
-const ALL_KEYS = [K.groups, K.meta, K.rec, K.ws, K.exc].sort(); // 全量写 = 全部集合键 + meta,单次 set
+const ALL_KEYS = [K.groups, K.meta, K.rec, K.ws, K.exc, 'bgtPageSnapshots'].sort(); // 全量写 = 全部集合键 + meta,单次 set(WP-5.4 后含快照清单键)
 
 function legacyBlob() {
   return {

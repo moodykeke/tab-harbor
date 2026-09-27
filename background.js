@@ -5,7 +5,7 @@
  */
 'use strict';
 
-importScripts('shared/i18n.js', 'shared/store.js');
+importScripts('shared/i18n.js', 'shared/store.js', 'shared/garden.js'); // garden:WP-5.4 快照磁盘通道(SW 内可直接用 IndexedDB 取句柄)
 
 const BADGE_COLOR = '#0891b2';
 const BADGE_OK_COLOR = '#16a34a';   // 右键菜单动作成功时的徽章色
@@ -528,6 +528,11 @@ async function rebuildContextMenus() {
     title: tr('把选中文字存为摘录'),
     contexts: ['selection'],
   });
+  create({
+    id: 'bgt-snapshot', // WP-5.4(T2):可选权限 pageCapture,首次使用时在手势内申请
+    title: tr('把此页面存为完整快照(MHTML)'),
+    contexts: ['page'],
+  });
   const groups = data.groups.filter((g) => !g.archived).slice(0, 8);
   if (groups.length) {
     create({
@@ -579,6 +584,44 @@ async function addTabToGroup(groupId, tab) {
   return true;
 }
 
+/** WP-5.4(T2):把页面存为完整快照(MHTML)。
+ *  纪律:① pageCapture 是可选权限,首次使用在手势内申请(此函数第一个 await 就是它);
+ *  ② MHTML 1–5MB/页,**绝不进 chrome.storage.local**(ADR-001 §边界)—— 落盘到
+ *  garden 目录的 snapshots/ 子目录;③ store 只留清单 {url,title,hash,bytes,path,at},
+ *  hash 用与备份层同一 SHA-256 口径(crypto.subtle),复现 ADR-001 附录 A 的五处纪律。 */
+async function saveFullSnapshot(tab) {
+  if (!tab || tab.id == null || !tab.url || !/^https?:/i.test(tab.url)) return false;
+  try {
+    const granted = await chrome.permissions.request({ permissions: ['pageCapture'] });
+    if (!granted) return false;
+    const blob = await new Promise((resolve, reject) => {
+      try {
+        chrome.pageCapture.saveAsMHTML({ tabId: tab.id }, (b) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(b);
+        });
+      } catch (e) { reject(e); }
+    });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const dir = await BGTGarden.loadGardenHandle();
+    if (!dir || !(await BGTGarden.ensurePermission(dir))) return false;
+    const sub = await dir.getDirectoryHandle('snapshots', { create: true });
+    const name = BGTGarden.safeFileName(tab.title || tab.url) + '-' + Date.now() + '.mhtml';
+    await BGTGarden.writeFile(sub, name, bytes, false);
+    const data = await BGTStore.load();
+    data.pageSnapshots.unshift(BGTStore.normalizePageSnap({
+      url: tab.url, title: (tab && tab.title) || '', hash, bytes: bytes.length,
+      path: 'snapshots/' + name, at: Date.now(),
+    }));
+    await BGTStore.persist(data, { pageSnapshots: true }); // 只写清单键 + meta
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function onContextMenuClicked(info, tab) {
   let acted = false;
   if (info.menuItemId === 'bgt-new') {
@@ -593,6 +636,10 @@ async function onContextMenuClicked(info, tab) {
     acted = true;
   } else if (String(info.menuItemId).startsWith('g:')) {
     acted = await addTabToGroup(String(info.menuItemId).slice(2), tab);
+  } else if (info.menuItemId === 'bgt-snapshot') {
+    // WP-5.4(T2):完整快照。手势纪律:pageCapture 的权限申请必须在本分支
+    // 第一个 await 之前发起(saveFullSnapshot 的首语句就是 permissions.request)
+    acted = await saveFullSnapshot(tab);
   } else if (info.menuItemId === 'bgt-excerpt') {
     // 摘录走 SW 串行队列,只写 bgtExcerpts+meta(分键收益与写隔离由测试看守);
     // 2.1b:采集瞬间冻结归属 —— 绑定中的窗口里的摘录,记下它属于哪个项目
