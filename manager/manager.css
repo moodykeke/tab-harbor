@@ -37,7 +37,7 @@
   background: var(--grad);
   box-shadow: 0 2px 8px rgba(14, 165, 233, 0.4);
 }
-.brand__logo svg { width: 19px; height: 19px; fill: none; stroke: #fff; stroke-width: 1.8; }
+.brand__logo svg { width: 19px; height: 19px; fill: #fff; stroke: none; }
 
 .brand__text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
 .brand__text strong { font-size: 13.5px; letter-spacing: 0.1px; }
@@ -107,6 +107,9 @@
 
 .side__foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--border); }
 .version { padding: 2px 9px; font-size: 11px; color: var(--text-3); }
+/* 赞助入口:侧栏底部一处、不打扰(自愿,不弹窗不进通知) */
+.sponsor { display: block; margin: 0 9px; padding: 2px 0; font-size: 11px; color: var(--text-3); text-decoration: none; }
+.sponsor:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 
 /* 拖动标签悬停在「新建分组」上时的高亮 */
 #btnNewGroup.dragover {

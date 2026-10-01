@@ -17,6 +17,11 @@
  *    因此 BUILD-INFO.txt 里的哈希可被任何人重新推导验证。
  * 4. **零依赖**:自带最小 ZIP 写入器(zlib deflateRaw),不需要 npm 装包。
  *
+ * 5. **版本双轨**:dev 版号(manifest.json 的 version)随开发自增,只进仓库;
+ *    store 版号(VERSIONS.json 的 store)面向 CWS,上架前由人递增。打包时把 zip 内
+ *    manifest 的 version 改写为 store 版号 —— 商店用户看到的永远是上架版本,
+ *    而仓库里开发照旧走 dev 版号。对应关系写入 BUILD-INFO.txt 与 CHANGELOG。
+ *
  * 用法:
  *   node tools/pack.js                  # 跑测试 → 出 cws + review 两个包
  *   node tools/pack.js --skip-tests     # 跳过测试(仅调试打包本身)
@@ -52,6 +57,7 @@ const SHIP = [
 const REVIEW_EXTRA = [
   'README.md', 'ARCHITECTURE.md', 'CHANGELOG.md', '提交说明.md',
   'CHROMEWEBSTORE.md', 'PRIVACY.md', 'DEV-HANDBOOK.md',
+  'VERSIONS.json',
   'docs',
   'test', 'tools', 'store-assets',
 ];
@@ -203,6 +209,34 @@ function gitInfo() {
   }
 }
 
+/* ---------------- 版本双轨:dev(manifest)vs store(VERSIONS.json) ---------------- */
+
+const VERSIONS_FILE = path.join(ROOT, 'VERSIONS.json');
+
+function readStoreVersion() {
+  let v;
+  try {
+    v = JSON.parse(fs.readFileSync(VERSIONS_FILE, 'utf8')).store;
+  } catch (e) {
+    throw new Error('VERSIONS.json 缺失或非法 —— store 版号是上架的单一事实来源,请先创建');
+  }
+  if (typeof v !== 'string' || !/^\d+(\.\d+){0,3}$/.test(v)) {
+    throw new Error('VERSIONS.json 的 store 版号非法: ' + JSON.stringify(v));
+  }
+  return v;
+}
+
+/** 把 manifest 字节里的 "version" 改写为商店版号(必须恰有一个该字段,防止误伤) */
+function manifestWithStoreVersion(buf, storeVersion) {
+  const text = buf.toString('utf8');
+  const re = /("version"\s*:\s*")(\d+(?:\.\d+){0,3})(")/g;
+  const hits = text.match(re);
+  if (!hits || hits.length !== 1) {
+    throw new Error('manifest.json 应恰有一个 "version" 字段,找到 ' + (hits ? hits.length : 0));
+  }
+  return Buffer.from(text.replace(re, '$1' + storeVersion + '$3'), 'utf8');
+}
+
 /* ---------------- 主流程 ---------------- */
 
 function main() {
@@ -212,7 +246,9 @@ function main() {
   const outDir = outIdx >= 0 ? path.resolve(argv[outIdx + 1]) : path.join(ROOT, '..');
 
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
-  const version = manifest.version;
+  const devVersion = manifest.version;
+  const storeVersion = readStoreVersion();
+  const version = storeVersion; // 产物命名与展示一律用商店版号;dev 版号只进 BUILD-INFO
   const tag = APP + '-v' + version;
 
   /* 1. 发布门禁 */
@@ -239,8 +275,12 @@ function main() {
     process.exit(1);
   }
 
-  /* 3. 先出商店包(不能含 test/、tools/、任何 .md) */
-  const cwsEntries = shipFiles.map((f) => ({ name: f, data: fs.readFileSync(path.join(ROOT, f)) }));
+  /* 3. 先出商店包(不能含 test/、tools/、任何 .md)。
+        manifest 的 version 在包内一律改写为商店版号(双轨制的落地点) */
+  const fileData = (f) => (f === 'manifest.json'
+    ? manifestWithStoreVersion(fs.readFileSync(path.join(ROOT, f)), storeVersion)
+    : fs.readFileSync(path.join(ROOT, f)));
+  const cwsEntries = shipFiles.map((f) => ({ name: f, data: fileData(f) }));
   const cwsBuf = makeZip(cwsEntries);
   const cwsSha = crypto.createHash('sha256').update(cwsBuf).digest('hex');
 
@@ -251,7 +291,8 @@ function main() {
   const git = gitInfo();
   const buildInfo = [
     'Tab Harbor v' + version + ' — BUILD INFO',
-    'Version: ' + version,
+    'Store version: ' + storeVersion + '  (VERSIONS.json —— 上架版号,zip 内 manifest 即此值)',
+    'Dev version: ' + devVersion + '  (manifest.json —— 仓库开发版号)',
     'Build date: ' + new Date().toISOString(),
     'CWS zip SHA-256: ' + cwsSha,
     'CWS zip entries: ' + cwsEntries.length,
@@ -265,7 +306,7 @@ function main() {
 
   const reviewTop = SHIP.concat(REVIEW_EXTRA);
   const reviewFiles = collect(reviewTop);
-  const reviewEntries = reviewFiles.map((f) => ({ name: f, data: fs.readFileSync(path.join(ROOT, f)) }));
+  const reviewEntries = reviewFiles.map((f) => ({ name: f, data: fileData(f) }));
   reviewEntries.push({ name: 'BUILD-INFO.txt', data: Buffer.from(buildInfo, 'utf8') });
   reviewEntries.push({ name: 'TEST-REPORT.txt', data: Buffer.from(testReport, 'utf8') });
   // 把商店包本体也放进来:审核者可对照 BUILD-INFO 里的 SHA-256 当场核验
@@ -281,7 +322,8 @@ function main() {
   fs.writeFileSync(reviewPath, reviewBuf);
 
   process.stdout.write('\n商店包 ' + path.basename(cwsPath) + '  ' + cwsEntries.length + ' 项  '
-    + (cwsBuf.length / 1024).toFixed(1) + ' KB\n  SHA-256 ' + cwsSha + '\n');
+    + (cwsBuf.length / 1024).toFixed(1) + ' KB\n  SHA-256 ' + cwsSha
+    + '\n  版本: 商店 ' + storeVersion + ' ← dev ' + devVersion + '\n');
   process.stdout.write('审核包 ' + path.basename(reviewPath) + '  ' + reviewEntries.length + ' 项  '
     + (reviewBuf.length / 1024).toFixed(1) + ' KB\n');
   process.stdout.write(JSON.stringify({ cws: cwsPath, review: reviewPath, sha256: cwsSha }, null, 2) + '\n');

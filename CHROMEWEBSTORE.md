@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — Tab Harbor · 标签港湾
 
-> Last Updated: 2026-09-26
+> Last Updated: 2026-10-01
 > 本文件是提交 Chrome Web Store 时的唯一事实来源(列表文案 / 权限理由 / 隐私披露 / 版本历史)。
 > 按 Google Chrome 团队 `chrome-extensions` 技能的要求维护(技能包见 `skills/`)。
 > **本文件不得打进商店 zip** —— `tools/pack.js` 的显式白名单已排除根目录 `.md`。
@@ -78,7 +78,7 @@ Tab Harbor 只申请完成上述功能必需的权限:读取标签、本地存�
 网站图标、导入/还原原生标签组、右键菜单、侧边栏。
 访问网站服务器的权限只在你填写自己的 WebDAV 地址时、针对那一个地址申请。
 
-反馈与问题:<!-- 填写支持邮箱或 Issues 地址 -->
+反馈与问题:moodykeke@gmail.com
 ```
 
 en:
@@ -147,7 +147,7 @@ backups, site icons, import/restore native tab groups, the right-click menu, and
 panel. Access to web servers is requested only for the single address you enter if you
 configure your own WebDAV backup.
 
-Feedback: <!-- support email or issues URL -->
+Feedback: moodykeke@gmail.com
 ```
 
 **Category** [REQUIRED]
@@ -169,17 +169,20 @@ Feedback: <!-- support email or issues URL -->
 
 | Asset | Dimensions | Status | Filename |
 |-------|-----------|--------|----------|
-| Store Icon [REQUIRED] | 128×128 PNG | ✅ Ready | `icons/icon128.png` |
+| Store Icon [REQUIRED] | 128×128 PNG | ✅ Ready | `icons/icon128.png`(帆船图形来自开源 Phosphor Icons,MIT,见 `store-assets/brand/CREDITS.md`) |
 | Screenshot 1 [REQUIRED] | 1280×800 | ✅ Ready | `store-assets/screenshot-1-groups.png` |
 | Screenshot 2 [RECOMMENDED] | 1280×800 | ✅ Ready | `store-assets/screenshot-2-timeline.png` |
 | Screenshot 3 [RECOMMENDED] | 1280×800 | ✅ Ready | `store-assets/screenshot-3-workspaces.png` |
 | Screenshot 4 | 1280×800 | ✅ Ready | `store-assets/screenshot-4-data-control.png` |
 | Screenshot 5 | 640×400 | ✅ Ready | `store-assets/screenshot-5-popup.png` |
-| Small Promo Tile [RECOMMENDED] | 440×280 | ⬜ Not created | |
-| Marquee Promo Tile | 1400×560 | ⬜ Not created | |
+| Small Promo Tile [RECOMMENDED] | 440×280 | ✅ Ready | `store-assets/promo-440.png` |
+| Marquee Promo Tile | 1400×560 | ✅ Ready | `store-assets/promo-1400.png` |
 
 > 图标尺寸已逐个核验(16/32/48/64/128 均为真实像素尺寸,非同一张图复用)。
+> 图形来源:Phosphor Icons「sailboat」(MIT,允许商用/修改,溯源见
+> `store-assets/brand/CREDITS.md`);再生:`node tools/make-icons.js`。
 > 截图由 `node dev-server.js` 的预览页 + 无头 Chrome 生成,详细做法见 `store-assets/README.md`。
+> 促销图由 `node tools/make-promo.js` 生成(常青文案,无版本号,长期复用)。
 
 ### Screenshot Notes
 
@@ -252,10 +255,10 @@ Feedback: <!-- support email or issues URL -->
 **Privacy Policy URL** [REQUIRED — 待填写]
 
 ```
-<!-- 发布后填入,例如 https://<账号>.github.io/<仓库>/PRIVACY.md -->
+<!-- 发布后填入,例如 https://moodykeke.github.io/tab-harbor/PRIVACY.html -->
 ```
 
-> 政策全文见仓库根 `PRIVACY.md`(按技能包的"Standard Policy"结构撰写)。
+> 政策全文见仓库根 `PRIVACY.md`(按技能包的"Standard Policy"结构撰写,联系邮箱已填)。
 > 提交前必须:① 发布到公开 URL;② 亲自访问确认不是 404(死链会被自动拒绝);
 > ③ 与上面「Data Collection」表格逐项对照一致。
 
@@ -265,21 +268,45 @@ Feedback: <!-- support email or issues URL -->
 
 **Visibility**: Public
 **Regions**: All regions
+**Pricing**: Free(完全免费,无内购、无广告;可选的自愿赞助渠道见下方 Developer Info)
 
 ## Developer Info
 
-**Publisher Name** [REQUIRED — 待填写]
+**Publisher Name** ✅
 
-**Contact Email** [REQUIRED — 待填写]
+`moodykeke`
+
+**Contact Email** ✅
+
+`moodykeke@gmail.com`
 <!-- 会公开显示;必须是可收信的邮箱,Google 的整改通知发到这里 -->
 
-**Support URL / Email** [RECOMMENDED — 待填写]
+**Support URL / Email** ✅
+
+`moodykeke@gmail.com`
 
 **Homepage URL** [RECOMMENDED — 待填写]
+
+> 建议发布 GitHub 仓库后填 `https://github.com/moodykeke/<仓库名>`;仓库同时承载
+> 隐私政策页(见 Privacy Policy URL 一步)。
+
+**Sponsorship(赞助,自愿)** ✅
+
+- 插件完全免费,无广告、无内购。如果它帮到了你,欢迎"请作者喝杯咖啡":
+  `https://buymeacoffee.com/moodykeke`
+- **上架前必须亲自核对**:① 该页面已注册并可访问(死链按 Homepage 同标准对待);
+  ② 应用内入口只在管理页侧栏底部一处,文字为「请作者喝杯咖啡」,不弹窗、不打断、
+  不进通知 —— 符合 CWS 现行政策(现行 Program Policies 未禁止应用内自愿赞助链接,
+  红线是欺骗性与 notification abuse)。
+- 若不想维护赞助页,删除设置页链接 + 删除本节即可,其余材料不受影响。
 
 ---
 
 ## Version History
+
+> **版本双轨制**(详见 `VERSIONS.json` 与 DEV-HANDBOOK):**商店首发 = 商店版 1.0.0**,
+> 对应**开发版 3.25.0**;下表是开发版的完整历史(商店后台每次上架只需写当版差异)。
+> 今后每次上架:CHANGELOG 记一行映射 → `VERSIONS.json` 的 `store` 递增 → `node tools/pack.js`。
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|

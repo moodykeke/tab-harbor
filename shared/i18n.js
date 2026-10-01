@@ -59,6 +59,8 @@
   '排除当前页': 'Exclude current tab',
   '新建分组': 'New group',
   '数据只存本机;云端备份只发往你自己的 WebDAV': 'Data stays on your machine; cloud backup only to your own WebDAV',
+  '请作者喝杯咖啡': 'Buy the author a coffee',
+  '完全免费;赞助完全自愿': 'Completely free; tipping is entirely voluntary',
   '侧边栏打不开,已改为打开管理页': 'Could not open the side panel — opening the manager page instead',
   '搜索已保存的标签,或输入 1–9 直达泊位': 'Search saved tabs, or type 1–9 to jump to a berth',
   '第一步:保存当前窗口标签': 'Step 1: Save current window tabs',

@@ -5,6 +5,33 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 
 ---
 
+## [未发布] — 上架准备(无功能变更,dev 版号不变)
+
+> 主题:**版本双轨制 + 商店素材收口**。为首次上架做准备,应用功能零变化,门禁 155 项不增不减。
+
+### Added(发布流程)
+- **版本双轨制**:开发版号(manifest.json 的 `version`,当前 3.25.0)只进仓库,随开发自增;
+  商店版号(`VERSIONS.json` 的 `store`,首发 **1.0.0**)面向 CWS,上架前由人递增。
+  `tools/pack.js` 打包时把 zip 内 manifest 的 version 改写为商店版号,输出
+  `tab-harbor-v<商店版>-*.zip`;对应关系写入 BUILD-INFO.txt。商店里显示上架版本,
+  本地加载显示开发版,互不干扰(此条回应"发包是第一版、开发是 dev 版,需区分"的要求)
+- 商店素材管线零依赖化:`tools/chrome-shot.js`(无头 Chrome 截图,尺寸字节级核验)+
+  `tools/brand.js`(品牌图形唯一事实来源)+ `tools/make-icons.js` / `tools/make-promo.js`
+- 商店素材:**图标全面重绘** —— 帆船图形改用开源 Phosphor Icons「sailboat」(MIT,
+  原件与许可见 `store-assets/brand/CREDITS.md`,可长期商用),品牌渐变圆角底沿用;
+  新增 **440×280 小促销图** 与 **1400×560 横幅**(`store-assets/promo-440.png` / `promo-1400.png`,
+  常青文案无版本号)
+
+### Changed
+- `CHROMEWEBSTORE.md`:发布者 **moodykeke**、联系/支持邮箱 **moodykeke@gmail.com** 已填;
+  Distribution 增补 Pricing: Free;新增 Sponsorship 节(自愿赞助 `buymeacoffee.com/moodykeke`,
+  上架前需人工核对该页面可访问);版本历史增补双轨映射说明
+- `PRIVACY.md`:联系邮箱已填(moodykeke@gmail.com);隐私政策公开 URL 仍待人工发布
+- 管理页侧栏底部新增**赞助入口**(一处、不打扰、不弹窗;中英双语,过 i18n 门禁)
+
+### 首次上架映射
+- 商店版 **1.0.0** = 开发版 **3.25.0**(内容等同本节 + 3.25.0 的全部功能)
+
 ## [3.25.0] — 共现图(WP-5.2,全部 26 个工作包收官)
 
 > 主题:来源之间的边 —— **只能由浏览器观测层生成,PKM 算不出来**(笔记只知道你

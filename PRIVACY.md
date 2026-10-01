@@ -76,7 +76,7 @@ be noted in the extension's release notes.
 
 ## Contact
 
-Questions about privacy: **<!-- 填写你的联系邮箱 -->**
+Questions about privacy: **moodykeke@gmail.com**
 
 ---
 

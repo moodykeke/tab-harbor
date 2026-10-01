@@ -24,7 +24,7 @@ body { font-size: 13px; }
   border-radius: 7px;
   background: var(--grad);
 }
-.sp__logo svg { width: 13px; height: 13px; fill: none; stroke: #fff; stroke-width: 1.8; }
+.sp__logo svg { width: 13px; height: 13px; fill: #fff; stroke: none; }
 .sp__name { flex: 1; font-size: 13px; }
 
 .sp__search { position: relative; padding: 10px 12px 4px; }

@@ -1,0 +1,12 @@
+{
+  "store": "1.0.0",
+  "_readme": [
+    "版本双轨制(便于后期升级或开发):",
+    "· dev 版号 = manifest.json 的 version,随开发自增(当前 3.25.0),只进仓库、本地加载显示的是它;",
+    "· store 版号 = 本文件的 store,面向 Chrome Web Store,首次上架为 1.0.0,每次上传前由人手动递增",
+    "  (CWS 要求新包版本严格大于已上架版本;忘递增会被后台直接拒绝,属安全兜底)。",
+    "打包:node tools/pack.js 读取本文件,把 zip 内 manifest 的 version 改写为 store 版号,",
+    "输出 tab-harbor-v<store>-cws.zip / -review.zip;两版的对应关系写入 BUILD-INFO.txt 与 CHANGELOG。",
+    "规则:商店版发布 = 先在 CHANGELOG 记一行映射(store x.y.z ↔ dev a.b.c),再递增 store。"
+  ]
+}
