@@ -16,6 +16,7 @@ const ROOT = path.join(__dirname, '..');
 /** 顺序即发布门禁顺序:先静态门禁,再数据层,最后接缝层 */
 const SUITES = [
   { name: 'Lint(未声明标识符)', file: 'tools/check-globals.js' },
+  { name: 'Syntax(全量 JS 编译)', file: 'test/syntax.js' },
   { name: 'Unit(store 纯函数)', file: 'test/test-store.js' },
   { name: 'Unit(知识库通道)', file: 'test/garden.js' },
   { name: 'Performance(基准)', file: 'test/perf.js' },

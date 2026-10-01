@@ -386,8 +386,7 @@ export function openDupDialog() {
       class: 'dup-verdict__label',
       text: (overridden ? tr('动态(你标记的)') : VL[verdict.verdict] || verdict.verdict)
         + ' · ' + verdict.reasons.join(';'),
-      title: verdict.reasons.join('
-'),
+      title: verdict.reasons.join('\n'),
     }));
     const ovBtn = h('button', {
       class: 'ws-conflict__btn' + (overridden ? ' ws-conflict__btn--on' : ''), type: 'button',
@@ -464,8 +463,7 @@ export function openDupDialog() {
       const na = titleOf.get(e.a) || { title: e.a, url: e.a };
       const nb = titleOf.get(e.b) || { title: e.b, url: e.b };
       coWrap.appendChild(h('div', { class: 'co-row' },
-        h('span', { class: 'co-names', text: na.title + '  ↔  ' + nb.title, title: e.a + '
-' + e.b }),
+        h('span', { class: 'co-names', text: na.title + '  ↔  ' + nb.title, title: e.a + '\n' + e.b }),
         h('span', { class: 'sim-score', text: '×' + e.w.toFixed(2).replace(/\.?0+$/, '') }),
       ));
     }
@@ -494,9 +492,7 @@ async function exportCoOccurrence() {
     lines.push('- ' + (a.title || e.a) + ' ↔ ' + (b.title || e.b) + ' — ' + e.w.toFixed(2));
   }
   const name = 'co-occurrence-' + BGTGarden.dayKeyOf(Date.now()) + '.md';
-  await BGTGarden.writeFile(dir, name, lines.join('
-') + '
-', true);
+  await BGTGarden.writeFile(dir, name, lines.join('\n') + '\n', true);
   toast(tr('共现图已导出({e} 条边)→ {name}', { e: g.edges.length, name }));
 }
 
@@ -1023,8 +1019,7 @@ export function openRecordDialog(record) {
     const totalVisits = rec.obs.reduce((n, o) => n + o.visits, 0);
     const totalDwellMin = Math.round(rec.obs.reduce((n, o) => n + o.dwellMs, 0) / 60000);
     summary.appendChild(h('span', {
-      title: rec.obs.slice(0, 5).map((o) => o.title || o.url).join('
-'),
+      title: rec.obs.slice(0, 5).map((o) => o.title || o.url).join('\n'),
       text: tr('会话内打开 {v} 次 · 停留约 {m} 分({u} 个来源)',
         { v: totalVisits, m: totalDwellMin, u: rec.obs.length }),
     }));
