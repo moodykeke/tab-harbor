@@ -25,5 +25,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22   # 门禁用到内置 WebSocket / fetch(Node 22+)
-      - name: 全部门禁(7 套,任一失败非零退出)
+      - name: 全部门禁(9 套,任一失败非零退出)
         run: node tools/test-all.js

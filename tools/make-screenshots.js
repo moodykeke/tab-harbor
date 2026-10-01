@@ -99,7 +99,11 @@ const SHOTS = [
     file: 'screenshot-1-groups.png',
     w: 1280, h: 800,
     navigate: BASE + '/manager/manager.html',
-    ready: "document.querySelectorAll('#groupList .group').length >= 3",
+    // 3.17.0 起默认视图是「今天」:先等页面就绪,再显式切到「分组」并等卡片渲染
+    ready: "!!document.querySelector('#viewGroups')",
+    after: "if (document.querySelector('#btnWelcomeDismiss')) document.querySelector('#btnWelcomeDismiss').click();"
+      + " document.querySelector('#viewGroups').click()",
+    readyAfter: "document.querySelectorAll('#groupList .group').length >= 3",
     note: '分组主页(保存下来的分组卡片)',
   },
   {
@@ -205,9 +209,18 @@ async function main() {
         await waitFor(cdp, cur.sessionId, shot.ready, shot.file + ' 首屏', 15000);
       }
       if (shot.after) {
-        await evaluate(cdp, cur.sessionId, shot.after);
-      }
-      if (shot.readyAfter) {
+        // after 反复重试直到 readyAfter 通过:静态元素出现 ≠ 模块已绑定事件,
+        // 点击可能落在 init() 之前而无效 —— 重试对绑定时序免疫(3.17 改默认视图时踩过)。
+        const deadline = Date.now() + 12000;
+        for (;;) {
+          await evaluate(cdp, cur.sessionId, shot.after);
+          if (await evaluate(cdp, cur.sessionId, '!!(' + (shot.readyAfter || 'true') + ')')) break;
+          if (Date.now() > deadline) {
+            throw new Error(shot.file + ' 操作后条件超时: ' + (shot.readyAfter || 'true'));
+          }
+          await sleep(200);
+        }
+      } else if (shot.readyAfter) {
         await waitFor(cdp, cur.sessionId, shot.readyAfter, shot.file + ' 内容就绪', 10000);
       }
       await sleep(700); // 过渡动画与图标

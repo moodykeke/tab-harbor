@@ -230,7 +230,24 @@
   window.chrome = {
     runtime: {
       id: 'mock-extension-id',
-      getURL: function (p) { return 'mock://' + p; },
+      // _favicon 返回站名首字母的 SVG 数据 URI:预览/截图里图标可真实渲染,
+      // 且不会向网络发起 mock:// 这类浏览器必然拒绝的请求(运行时冒烟曾报 16 条)。
+      getURL: function (p) {
+        p = String(p || '');
+        if (p.indexOf('_favicon/') === 0) {
+          const m = /[?&]pageUrl=([^&]+)/.exec(p);
+          let host = '';
+          try { host = new URL(m ? decodeURIComponent(m[1]) : '').hostname; } catch (e) { host = ''; }
+          const letter = (host.replace(/^www[.]/, '')[0] || '?').toUpperCase();
+          let hue = 0;
+          for (let i = 0; i < host.length; i += 1) hue = (hue * 31 + host.charCodeAt(i)) % 360;
+          const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">'
+            + '<rect width="32" height="32" rx="7" fill="hsl(' + hue + ',55%,45%)"/>'
+            + '<text x="16" y="21" font-size="15" font-family="sans-serif" fill="#fff" text-anchor="middle">' + letter + '</text></svg>';
+          return 'data:image/svg+xml,' + encodeURIComponent(svg);
+        }
+        return 'mock://' + p;
+      },
       sendMessage: function (msg, cb) {
         setTimeout(function () {
           let result = { ok: false, reason: 'mock' };
