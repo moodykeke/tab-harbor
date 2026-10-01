@@ -1,3 +1,8 @@
+---
+layout: default
+title: "Privacy Policy — Tab Harbor · 标签港湾"
+---
+
 # Privacy Policy — Tab Harbor · 标签港湾
 
 **Last updated: 2026-09-26**
