@@ -32,6 +32,10 @@ Tab Harbor · 标签港湾 — 所有显著变更记录于此。
 ### 首次上架映射
 - 商店版 **1.0.0** = 开发版 **3.25.0**(内容等同本节 + 3.25.0 的全部功能)
 
+### Added(开源与合规承载,2026-10-01)
+- 公开仓库 **https://github.com/moodykeke/tab-harbor**:源码、测试、门禁与上架材料全量随仓库分发(Homepage URL 已回填)
+- 隐私政策公开 URL:`https://moodykeke.github.io/tab-harbor/PRIVACY.html`(GitHub Pages 渲染,已验证非 404)—— 商店最后两个待填字段清零
+
 ## [3.25.0] — 共现图(WP-5.2,全部 26 个工作包收官)
 
 > 主题:来源之间的边 —— **只能由浏览器观测层生成,PKM 算不出来**(笔记只知道你

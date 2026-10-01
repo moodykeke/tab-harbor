@@ -343,8 +343,8 @@ git checkout -- background.js
 | 项 | 说明 |
 | --- | --- |
 | **真机验证** | Wave 0.1。本地 harness 结构上验不了手势、omnibox 渲染、真实排版 |
-| **隐私政策发布** | 政策全文在 `PRIVACY.md`(联系邮箱已填 moodykeke@gmail.com),需发布到公开 URL(GitHub Pages / Gist raw 均可),再回填 `CHROMEWEBSTORE.md`;必须亲自访问确认非 404 |
-| **GitHub 仓库(Homepage)** | 建仓库后把 URL 回填 `CHROMEWEBSTORE.md`;建议同名挂隐私政策页,一举两得 |
+| ~~**隐私政策发布**~~ ✅ | `https://moodykeke.github.io/tab-harbor/PRIVACY.html`(GitHub Pages,已验证 HTTP 200,2026-10-01;更新政策 = 改 PRIVACY.md → push 自动重发布) |
+| ~~**GitHub 仓库(Homepage)**~~ ✅ | `https://github.com/moodykeke/tab-harbor`(公开,源码/测试/材料随仓库分发,2026-10-01) |
 | **赞助页建号** | `buymeacoffee.com/moodykeke` 需人工注册并核对可访问;若不想要赞助,删管理页侧栏 `.sponsor` 链接与 CHROMEWEBSTORE.md 的 Sponsorship 节 |
 | **商店上传与发布者身份** | 上传 `tab-harbor-v1.0.0-cws.zip` 至 CWS 后台,填发布者身份/地区;素材与文案从 `CHROMEWEBSTORE.md` 逐项粘贴 |
 

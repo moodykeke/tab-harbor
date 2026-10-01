@@ -252,15 +252,12 @@ Feedback: moodykeke@gmail.com
 
 ## Privacy Policy
 
-**Privacy Policy URL** [REQUIRED — 待填写]
+**Privacy Policy URL** ✅
 
-```
-<!-- 发布后填入,例如 https://moodykeke.github.io/tab-harbor/PRIVACY.html -->
-```
+`https://moodykeke.github.io/tab-harbor/PRIVACY.html`
 
-> 政策全文见仓库根 `PRIVACY.md`(按技能包的"Standard Policy"结构撰写,联系邮箱已填)。
-> 提交前必须:① 发布到公开 URL;② 亲自访问确认不是 404(死链会被自动拒绝);
-> ③ 与上面「Data Collection」表格逐项对照一致。
+> 政策全文 = 仓库根 `PRIVACY.md`(GitHub Pages 渲染)。已亲自访问验证非 404(HTTP 200,2026-10-01);
+> 与「Data Collection」表格逐项一致。政策更新 = 改 `PRIVACY.md` → push → Pages 自动重发布。
 
 ---
 
@@ -285,10 +282,12 @@ Feedback: moodykeke@gmail.com
 
 `moodykeke@gmail.com`
 
-**Homepage URL** [RECOMMENDED — 待填写]
+**Homepage URL** ✅
 
-> 建议发布 GitHub 仓库后填 `https://github.com/moodykeke/<仓库名>`;仓库同时承载
-> 隐私政策页(见 Privacy Policy URL 一步)。
+`https://github.com/moodykeke/tab-harbor`
+
+> 开源仓库(公开):源码、测试、门禁与全部上架材料随仓库分发;隐私政策页由同仓库的
+> GitHub Pages 承载(见 Privacy Policy URL)。
 
 **Sponsorship(赞助,自愿)** ✅
 

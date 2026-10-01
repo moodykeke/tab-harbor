@@ -86,10 +86,7 @@ Questions about privacy: **moodykeke@gmail.com**
 ---
 
 <!--
-上传到 Chrome Web Store 前必做:
-1. 把本文件发布到一个公开可访问的 URL(GitHub Pages / Gist raw / 自建站点均可),例如
-   https://<你的账号>.github.io/<仓库>/PRIVACY.md
-2. 把该 URL 填入 CHROMEWEBSTORE.md 的「Privacy Policy URL」以及开发者后台的隐私政策字段
-3. 亲自访问一次该链接,确认不是 404(审查清单明确要求;死链会被自动拒绝)
-4. 本文件不得打进商店 zip(pack.js 的白名单已排除根目录 .md)
+已发布(2026-10-01):https://moodykeke.github.io/tab-harbor/PRIVACY.html(GitHub Pages,已验证 200)。
+更新流程:改本文件 → push 到 main → Pages 自动重发布;URL 不变,无需再回填 CHROMEWEBSTORE.md。
+本文件不得打进商店 zip(pack.js 的白名单已排除根目录 .md)。
 -->
